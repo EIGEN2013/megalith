@@ -1,0 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>clip previews</title>
+<style>
+  body { margin: 0; background: #222; color: #fff; font: 11px monospace; display: flex; flex-wrap: wrap; }
+  figure { margin: 2px; width: 194px; }
+  img { width: 194px; height: 194px; object-fit: contain; background: #444; display: block; }
+</style>
+<script>
+  const names = (new URLSearchParams(location.search).get('n') || '').split(',');
+  for (const n of names) {
+    document.write(`<figure><img src="https://cdn.meshy.ai/webapp-assets/feature-demo/animation/preview/biped/${n}.gif"><figcaption>${n}</figcaption></figure>`);
+  }
+</script>

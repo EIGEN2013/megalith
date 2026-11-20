@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GLB contact sheet</title>
+<style>html, body { margin: 0; background: #666; } canvas { width: 100%; height: auto; display: block; }</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ?m=a.glb,b.glb&yaws=20,110,200&unlit=1 : one row per model, one column per yaw (degrees).
+const q = new URLSearchParams(location.search);
+const models = q.get('m').split(',');
+const yaws = (q.get('yaws') || '20,110,200').split(',').map(Number);
+const cell = parseInt(q.get('cell') || '300', 10);
+const W = cell * yaws.length, H = cell * models.length;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setScissorTest(true);
+document.body.appendChild(renderer.domElement);
+const loader = new GLTFLoader();
+for (let r = 0; r < models.length; r++) {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8a9199);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  sun.position.set(2, 3, 4);
+  scene.add(sun);
+  const gltf = await loader.loadAsync(models[r] + '?t=' + Date.now());
+  gltf.scene.traverse(o => { if (o.isMesh && q.get('unlit')) o.material = new THREE.MeshBasicMaterial({ map: o.material.map, side: THREE.DoubleSide, alphaTest: 0.5 }); });
+  scene.add(gltf.scene);
+  const box = new THREE.Box3().setFromObject(gltf.scene);
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, size.z) * 0.58;
+  yaws.forEach((deg, c) => {
+    const cam = new THREE.OrthographicCamera(-span, span, span, -span, 0.01, 100);
+    const a = deg * Math.PI / 180;
+    cam.position.set(ctr.x + Math.sin(a) * 10, ctr.y + 2.5, ctr.z + Math.cos(a) * 10);
+    cam.lookAt(ctr);
+    renderer.setViewport(c * cell, H - (r + 1) * cell, cell, cell);
+    renderer.setScissor(c * cell, H - (r + 1) * cell, cell, cell);
+    renderer.render(scene, cam);
+  });
+}
+</script>
+</body>
+</html>

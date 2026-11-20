@@ -1,0 +1,66 @@
+{
+ "npc_marta": {
+  "name": "마르타", "role": "시장 상인", "skin": "marta", "props": [["kerchief", "Head"]],
+  "at": [7.3, 5.6], "face": [0, 0], "mode": "idle",
+  "lines": [
+   {"who": "npc_marta", "text": "어서 와요, 낯선 양반! 사과 한 알 어때요? 오늘 아침 언덕 너머에서 따온 거예요."},
+   {"who": "npc_marta", "text": "…가만, 그 망토 바닷물에 젖은 것 같은데. 설마 저 바다 위 돌문 쪽에서 온 건 아니죠?"},
+   {"who": "npc_marta", "text": "돌문이 빛나는 날이면 하늘에서 사람이 하나씩 떨어진다는 옛말이 있거든요. 다 미신이지만요."},
+   {"who": "robin", "text": "…미신이 아닐지도 몰라요."}
+  ],
+  "again": [{"who": "npc_marta", "text": "배고프면 언제든 들러요. 사과는 넉넉하니까."}]
+ },
+ "npc_oswin": {
+  "name": "오스윈", "role": "마을 경비병", "skin": "oswin", "props": [["helm", "Head"], ["spear", "RightHand"]],
+  "path": [[-5.0, -10.4], [6.0, -9.6]], "mode": "patrol",
+  "lines": [
+   {"who": "npc_oswin", "text": "거기 멈추시오! …아, 여행자인가. 요즘은 낯선 얼굴이 드물어서 말이오."},
+   {"who": "npc_oswin", "text": "사흘 전부터 바다 건너 북쪽 성에 밤마다 불이 켜지오. 백 년 넘게 아무도 살지 않은 성인데."},
+   {"who": "npc_oswin", "text": "장로님은 '돌아올 사람이 돌아오는 것'이라고만 하시던데, 난 영 불길하오."}
+  ],
+  "again": [{"who": "npc_oswin", "text": "성 쪽으로 배를 띄우려거든 장로님께 먼저 말씀드리시오."}]
+ },
+ "npc_eldric": {
+  "name": "엘드릭", "role": "마을 장로", "skin": "eldric", "props": [["beard", "Head"], ["staff", "RightHand"]],
+  "at": [2.8, -2.7], "face": [0, 0], "mode": "idle",
+  "lines": [
+   {"who": "npc_eldric", "text": "그 나침반은 이 마을이 생기기 훨씬 전, 옛 왕국 시절에 새겨진 것이라네."},
+   {"who": "npc_eldric", "text": "가장 긴 바늘은 언제나 저 성을 가리키지. 왕국이 무너진 뒤에도 말일세."},
+   {"who": "npc_eldric", "text": "…자네 눈빛, 어디서 본 듯하군. 성에 걸려 있던 마지막 왕자의 초상과 꼭 닮았어."},
+   {"who": "robin", "text": "왕자…? 숲의 목소리도 같은 말을 했어요."},
+   {"who": "npc_eldric", "text": "그렇다면 서두를 것 없네. 오늘은 마을을 둘러보고, 사람들 이야기를 들어 보게. 답은 늘 사람 사이에 있으니."}
+  ],
+  "again": [{"who": "npc_eldric", "text": "성으로 가는 길은 아직 바다가 막고 있네. 때가 오면 길이 열리겠지."}]
+ },
+ "npc_toby": {
+  "name": "토비", "role": "마을 아이", "skin": "toby", "props": [["toy_sword", "RightHand"]], "scale": 0.7, "head": 1.22,
+  "circle": [0.0, 0.0, 5.4], "mode": "circle",
+  "lines": [
+   {"who": "npc_toby", "text": "우와, 형 망토 멋있다! 형도 기사야?"},
+   {"who": "npc_toby", "text": "나도 크면 기사가 될 거야. 엘드릭 할아버지가 그러는데, 저 성에는 잠든 왕이 있대!"},
+   {"who": "robin", "text": "잠든 왕이라… 깨어나면 무슨 말을 할까."}
+  ],
+  "again": [{"who": "npc_toby", "text": "나 잡아 봐라~!"}]
+ },
+ "npc_bren": {
+  "name": "브렌", "role": "어부", "skin": "bren", "props": [["straw_hat", "Head"]],
+  "at": [21.0, -10.6], "face": [21.0, -30.0], "mode": "idle",
+  "lines": [
+   {"who": "npc_bren", "text": "오늘은 바다가 이상하게 잔잔하군. 이런 날엔 돌문 근처에 배를 대면 안 돼."},
+   {"who": "npc_bren", "text": "물살이 돌문 쪽으로 빨려 들어가거든. 마치 문이 숨을 들이쉬는 것처럼."},
+   {"who": "npc_bren", "text": "그러고 보니 자네가 나타나기 직전에, 돌문 사이로 빛이 번쩍했지."}
+  ],
+  "again": [{"who": "npc_bren", "text": "물고기는 안 잡혀도 바다는 늘 무언가를 데려온다네."}]
+ },
+ "npc_lina": {
+  "name": "리나", "role": "약초상", "skin": "lina", "props": [["braids", "Head"], ["flower_crown", "Head"]],
+  "at": [-8.0, 12.4], "face": [0, 4], "mode": "idle",
+  "lines": [
+   {"who": "npc_lina", "text": "약초 찾아요? 얼굴을 보니 머리가 지끈거리는 모양이네요."},
+   {"who": "npc_lina", "text": "이 보라 꽃은 '기억풀'이에요. 잃어버린 걸 떠올리게 해준대요. 하나 가져가요."},
+   {"who": "robin", "text": "고마워요. …정말 효과가 있으면 좋겠네요."},
+   {"who": "npc_lina", "text": "효과는 몰라도 향은 좋아요. 기억이란 원래 향기부터 돌아오는 법이니까."}
+  ],
+  "again": [{"who": "npc_lina", "text": "기억풀은 잘 챙겼죠? 잃어버리면 안 돼요."}]
+ }
+}

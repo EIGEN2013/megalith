@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Villager line-up</title>
+<style>html, body { margin: 0; background: #666; } canvas { width: 100%; height: auto; display: block; }</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+// ?n=marta,oswin&yaws=0,180  one column per villager x yaw; acc=<accessories glb>
+const q = new URLSearchParams(location.search);
+const npcs = q.get('n').split(',');
+const yaws = (q.get('yaws') || '0,180').split(',').map(Number);
+const cols = npcs.length * yaws.length, cell = parseInt(q.get('cell') || '200', 10);
+const W = cell * cols, H = Math.round(cell * 1.6);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setScissorTest(true);
+document.body.appendChild(renderer.domElement);
+const loader = new GLTFLoader();
+const hero = await loader.loadAsync(q.get('hero') || '/live_src/hero.glb');
+const acc = q.get('acc') ? await loader.loadAsync(q.get('acc') + '?t=' + Date.now()) : null;
+const rig = JSON.parse(q.get('rig') || '{}');   // name -> [accessory names]
+const texLoader = new THREE.TextureLoader();
+let c = 0;
+for (const name of npcs) {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8a9199);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2.2));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(2, 3, 4); scene.add(sun);
+  const body = SkeletonUtils.clone(hero.scene);
+  if (name !== 'robin') {
+    const tex = await texLoader.loadAsync('/assets_src/npc/' + name + '.jpg?t=' + Date.now());
+    tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace;
+    body.traverse(o => { if (o.isMesh && o.material.name === 'hero') { o.material = o.material.clone(); o.material.map = tex; } });
+    try {
+      const ftex = await texLoader.loadAsync('/assets_src/npc/face_' + name + '.jpg?t=' + Date.now());
+      ftex.flipY = false; ftex.colorSpace = THREE.SRGBColorSpace;
+      body.traverse(o => { if (o.isMesh && o.material.name === 'hero_face') { o.material = o.material.clone(); o.material.map = ftex; } });
+    } catch (e) { /* no face of their own */ }
+  }
+  scene.add(body);
+  body.updateMatrixWorld(true);
+  if (rig[name]) {
+    const bones = {}; body.traverse(o => { if (o.isBone) bones[o.name] = o; });
+    for (const [prop, boneName] of rig[name]) {
+      const g = await loader.loadAsync((prop.includes('/') ? prop : '/assets_src/npc/props/' + prop) + '.glb?t=' + Date.now());
+      const piece = g.scene;
+      scene.add(piece); piece.updateMatrixWorld(true);
+      bones[boneName].attach(piece);
+    }
+  }
+  const mixer = new THREE.AnimationMixer(body);
+  const idle = hero.animations.find(a => a.name === (q.get('a') || 'Idle'));
+  mixer.clipAction(idle).play(); mixer.setTime(parseFloat(q.get('t') || '0.5'));
+  for (const deg of yaws) {
+    if (q.get('times')) { const ts = q.get('times').split(',').map(Number); mixer.setTime(ts[c % ts.length]); }
+    const span = +(q.get('span') || 1.0), cy = +(q.get('cy') || 0.95), aspect = cell / H;
+    const cam = new THREE.OrthographicCamera(-span * aspect, span * aspect, span, -span, 0.01, 100);
+    const a = deg * Math.PI / 180;
+    cam.position.set(Math.sin(a) * 10, cy, Math.cos(a) * 10); cam.lookAt(0, cy, 0);
+    renderer.setViewport(c * cell, 0, cell, H); renderer.setScissor(c * cell, 0, cell, H);
+    renderer.render(scene, cam);
+    c++;
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,665 @@
+<title>메갈리스</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+  /* Layout: one screen. The 3D world fills it; the title and current goal sit top-left, the key
+     legend bottom-left, the dialogue box bottom-centre. Single committed look: moss-dark glass
+     panels with parchment text, rune cyan for the stones' voice, ember orange for memories. */
+  :root {
+    color-scheme: dark;
+    --mist: #c4d6dc;
+    --night: #0b0e0c;
+    --ink: #f3efe4;
+    --ink-dim: #c5c1b2;
+    --panel: rgba(22, 27, 22, 0.78);
+    --panel-line: rgba(243, 239, 228, 0.18);
+    --rune: #8fe6f7;
+    --ember: #f3a95f;
+    --moss: #6f9a57;
+    --moss-deep: #2f4a2a;
+    --font-display: "Gowun Batang", "Nanum Myeongjo", "Batang", serif;
+    --font-ui: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--night);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #stage { position: relative; height: 100%; min-height: 320px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; background: var(--mist); }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
+  #view:focus-visible { box-shadow: inset 0 0 0 2px var(--moss); }
+  #veil { position: absolute; inset: 0; background: var(--night); opacity: 1; pointer-events: none; transition: opacity 2.8s ease-out; }
+  #veil.open { opacity: 0; }
+
+  .overlay {
+    position: absolute; left: 0; right: 0; pointer-events: none;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; gap: 12px; justify-content: space-between; flex-wrap: wrap;
+  }
+  .overlay.top { top: 0; padding-block: 14px 0; align-items: flex-start; }
+  .overlay.bottom { bottom: 0; padding-block: 0 14px; align-items: flex-end; }
+  .panel { background: var(--panel); border: 1px solid var(--panel-line); border-radius: 3px; }
+
+  .nameplate { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px 11px; min-width: 0; max-width: min(100%, 420px); }
+  .nameplate h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.15; letter-spacing: 0.14em; }
+  #objective { margin: 0; color: var(--ink-dim); font-size: 13px; line-height: 1.45; display: flex; gap: 8px; align-items: baseline; }
+  #objective::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); transform: translateY(-1px); box-shadow: 0 0 0 3px rgba(243, 169, 95, 0.22); }
+
+  .legend { padding: 10px 12px; display: grid; grid-template-columns: auto auto; gap: 5px 14px; align-items: center; font-size: 13px; margin: 0; max-width: 100%; }
+  .legend dt { display: flex; gap: 4px; flex-wrap: wrap; }
+  .legend dd { margin: 0; color: var(--ink-dim); }
+  kbd {
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600; line-height: 1;
+    padding: 4px 6px; border-radius: 3px; background: rgba(243, 239, 228, 0.1);
+    border: 1px solid var(--panel-line); border-bottom-width: 2px; color: var(--ink);
+  }
+
+  /* Dialogue */
+  .talk { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 18px; pointer-events: none; }
+  #prompt { padding: 7px 12px; display: flex; gap: 8px; align-items: center; font-weight: 500; pointer-events: auto; cursor: pointer; }
+  #prompt b { color: var(--ember); font-weight: 600; }
+  #dialogue { width: min(100%, 720px); padding: 14px 18px 12px; pointer-events: auto; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+  #dialogue:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  #dlg-who { font-weight: 600; font-size: 13px; letter-spacing: 0.06em; color: var(--moss); min-height: 0; }
+  #dialogue[data-who="voice"] #dlg-who { color: var(--rune); }
+  #dialogue[data-who="voice"] #dlg-text { color: var(--rune); }
+  #dialogue[data-who="narration"] #dlg-who { display: none; }
+  #dialogue[data-who="narration"] #dlg-text { color: var(--ink-dim); }
+  #dlg-text { margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.6; min-height: 3.2em; text-wrap: pretty; overflow-wrap: anywhere; }
+  #dlg-next { align-self: flex-end; font-size: 12px; color: var(--ink-dim); opacity: 0; transition: opacity 0.2s; }
+  #dialogue.ready #dlg-next { opacity: 1; }
+  #stage.talking .legend, #stage.talking .touch, #stage.talking #prompt { display: none; }
+
+  /* Touch controls: hidden until a touch is seen (or on coarse pointers). */
+  .touch { display: none; pointer-events: auto; }
+  body.touching .touch { display: flex; }
+  body.touching .legend { display: none; }
+  #stick { width: 112px; height: 112px; border-radius: 50%; position: relative; touch-action: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: var(--moss); border: 1px solid rgba(0, 0, 0, 0.35); pointer-events: none; }
+  .pads { gap: 10px; align-items: flex-end; }
+  .pads button { font: 600 14px var(--font-ui); color: var(--ink); touch-action: none; width: 66px; height: 66px; border-radius: 50%; background: var(--panel); border: 1px solid var(--panel-line); }
+  .pads button.on, .pads button:active { background: var(--moss-deep); border-color: var(--moss); }
+  .pads button:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+
+  #curtain { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; background: var(--night); color: var(--ink-dim);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); font-family: var(--font-display); font-size: 17px; }
+  #curtain p { margin: 0; max-width: 34ch; text-wrap: balance; }
+  @media (max-width: 560px) { #dlg-text { font-size: 16px; } .nameplate h1 { font-size: 19px; } }
+</style>
+
+<div id="stage">
+  <canvas id="view" tabindex="0" aria-label="메갈리스의 스톤헨지와 숲. 키보드로 로빈을 조작합니다."></canvas>
+  <div id="veil"></div>
+
+  <div class="overlay top">
+    <div class="nameplate panel" id="nameplate" hidden>
+      <h1>메갈리스</h1>
+      <p id="objective"></p>
+    </div>
+  </div>
+
+  <div class="overlay bottom">
+    <dl class="legend panel" id="legend" aria-label="조작법" hidden>
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>걷기</dd>
+      <dt><kbd>Shift</kbd></dt><dd>누른 채 이동하면 달리기</dd>
+      <dt><kbd>Space</kbd></dt><dd>점프, 공중에서 한 번 더 누르면 2단 점프</dd>
+      <dt><kbd>J</kbd> <kbd>클릭</kbd></dt><dd>공격</dd>
+      <dt><kbd>F</kbd></dt><dd>가까운 돌 살펴보기</dd>
+      <dt><kbd>Q</kbd><kbd>E</kbd> <kbd>드래그</kbd></dt><dd>카메라 회전, 휠로 확대</dd>
+    </dl>
+    <div class="touch panel" id="stick" aria-label="이동 스틱"><div id="knob"></div></div>
+    <div class="touch pads">
+      <button type="button" id="btn-run" aria-pressed="false">달리기</button>
+      <button type="button" id="btn-attack">공격</button>
+      <button type="button" id="btn-jump">점프</button>
+    </div>
+  </div>
+
+  <div class="talk">
+    <div class="panel" id="prompt" role="button" tabindex="0" hidden><kbd>F</kbd><span><b id="prompt-name"></b> 살펴보기</span></div>
+    <div class="panel" id="dialogue" role="button" tabindex="0" aria-live="polite" hidden>
+      <div id="dlg-who"></div>
+      <p id="dlg-text"></p>
+      <div id="dlg-next">Space · 클릭 ▸</div>
+    </div>
+  </div>
+
+  <div id="curtain"><p id="curtain-text">메갈리스를 불러오는 중…</p></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script id="hero-glb" type="application/octet-stream">__HERO_GLB_BASE64__</script>
+<script id="world-glb" type="application/octet-stream">__WORLD_GLB_BASE64__</script>
+<script id="world-json" type="application/json">__WORLD_JSON__</script>
+<script id="story-json" type="application/json">__STORY_JSON__</script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var curtain = $('curtain');
+  function fail(message) { curtain.hidden = false; $('curtain-text').textContent = message; }
+  if (!window.THREE || !THREE.GLTFLoader) { fail('3D 라이브러리를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 열어 주세요.'); return; }
+
+  var WORLD = JSON.parse($('world-json').textContent);
+  var STORY = JSON.parse($('story-json').textContent);
+
+  // ---------------------------------------------------------------- tuning (mirrors player.gd)
+  var WALK_SPEED = 1.9, RUN_SPEED = 5.2, ACCEL = 28, AIR_ACCEL = 10, TURN_SPEED = 12;
+  var GRAVITY = 20, JUMP_VELOCITY = 7.0, DOUBLE_JUMP_VELOCITY = 6.6, MAX_JUMPS = 2;
+  var WALK_CLIP_SPEED = 1.6, RUN_CLIP_SPEED = 4.2, ATTACK_SPEED = 1.5, BLEND = 0.15;
+  var RADIUS = 0.32, HEIGHT = 1.8, STEP_UP = 0.35;
+
+  // ---------------------------------------------------------------- terrain + colliders
+  var HM = WORLD.height, heights = (function () {
+    var bin = atob(HM.int16_le_base64), view = new DataView(new ArrayBuffer(bin.length));
+    for (var i = 0; i < bin.length; i++) view.setUint8(i, bin.charCodeAt(i));
+    var out = new Float32Array(bin.length / 2);
+    for (var k = 0; k < out.length; k++) out[k] = view.getInt16(k * 2, true) * HM.unit;
+    return out;
+  })();
+  function groundAt(x, z) {
+    var fx = Math.max(0, Math.min(HM.size - 1.001, (x + HM.half) / HM.step));
+    var fz = Math.max(0, Math.min(HM.size - 1.001, (z + HM.half) / HM.step));
+    var ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz, row = iz * HM.size + ix;
+    var a = heights[row] * (1 - tx) + heights[row + 1] * tx;
+    var b = heights[row + HM.size] * (1 - tx) + heights[row + HM.size + 1] * tx;
+    return a * (1 - tz) + b * tz;
+  }
+  var BOXES = WORLD.colliders.map(function (c) {
+    return { x: c.x, z: c.z, cos: Math.cos(c.yaw), sin: Math.sin(c.yaw), hx: c.hx, hz: c.hz, y0: c.y0, y1: c.y1 };
+  });
+  function toLocal(b, x, z) { var dx = x - b.x, dz = z - b.z; return [dx * b.cos - dz * b.sin, dx * b.sin + dz * b.cos]; }
+  function floorAt(x, z, feetY) {
+    var best = groundAt(x, z);
+    for (var i = 0; i < BOXES.length; i++) {
+      var b = BOXES[i];
+      if (b.y1 <= best || b.y1 > feetY + STEP_UP) continue;
+      var l = toLocal(b, x, z), inset = RADIUS * 0.5;
+      if (Math.abs(l[0]) < b.hx + inset && Math.abs(l[1]) < b.hz + inset) best = b.y1;
+    }
+    return best;
+  }
+  function pushOut(p, v) {
+    for (var i = 0; i < BOXES.length; i++) {
+      var b = BOXES[i];
+      if (p.y >= b.y1 - 0.05 || p.y + HEIGHT <= b.y0) continue;
+      var l = toLocal(b, p.x, p.z), ex = b.hx + RADIUS, ez = b.hz + RADIUS;
+      if (Math.abs(l[0]) >= ex || Math.abs(l[1]) >= ez) continue;
+      var px = ex - Math.abs(l[0]), pz = ez - Math.abs(l[1]);
+      if (px < pz) l[0] = l[0] < 0 ? -ex : ex; else l[1] = l[1] < 0 ? -ez : ez;
+      p.x = b.x + l[0] * b.cos + l[1] * b.sin;
+      p.z = b.z - l[0] * b.sin + l[1] * b.cos;
+      v.x *= 0.6; v.z *= 0.6;
+    }
+  }
+
+  // ---------------------------------------------------------------- renderer + sky + light
+  var canvas = $('view'), stage = $('stage');
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  function srgb(hex) { return new THREE.Color(hex).convertSRGBToLinear(); }   // authored in sRGB, lit in linear
+
+  var scene = new THREE.Scene();
+  scene.background = srgb(0xc4d6dc);
+  scene.fog = new THREE.Fog(srgb(0xc4d6dc), 22, 150);
+  var camera = new THREE.PerspectiveCamera(55, 1, 0.1, 900);
+
+  var sky = new THREE.Mesh(
+    new THREE.SphereGeometry(600, 24, 12),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: { top: { value: new THREE.Color(0x3f74b8) }, low: { value: new THREE.Color(0xc4d6dc) } },
+      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 low; varying float h; void main(){ gl_FragColor = vec4(mix(low, top, smoothstep(0.02, 0.6, h)), 1.0); }'
+    }));
+  sky.renderOrder = -1;
+  scene.add(sky);
+
+  scene.add(new THREE.HemisphereLight(srgb(0xdfeaff), srgb(0x6f7a5c), 0.85));
+  var sun = new THREE.DirectionalLight(srgb(0xfff0d2), 1.15);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -16; sun.shadow.camera.right = 16;
+  sun.shadow.camera.top = 16; sun.shadow.camera.bottom = -16;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 70;
+  sun.shadow.bias = -0.0012; sun.shadow.normalBias = 0.03;
+  scene.add(sun, sun.target);
+  var SUN_OFFSET = new THREE.Vector3(10, 22, 14);
+
+  // ---------------------------------------------------------------- input
+  var keys = Object.create(null);
+  var pressed = { jump: false, attack: false, interact: false };
+  var KEYMAP = {
+    KeyW: 'forward', ArrowUp: 'forward', KeyS: 'back', ArrowDown: 'back', KeyA: 'left', ArrowLeft: 'left',
+    KeyD: 'right', ArrowRight: 'right', ShiftLeft: 'run', ShiftRight: 'run', Space: 'jump', KeyJ: 'attack',
+    KeyF: 'interact', Enter: 'confirm', KeyQ: 'camLeft', KeyE: 'camRight'
+  };
+  window.addEventListener('keydown', function (e) {
+    var action = KEYMAP[e.code];
+    if (!action) return;
+    e.preventDefault();
+    if (!e.repeat && (action === 'jump' || action === 'interact' || action === 'confirm')) {
+      if (talk.active) { advance(); return; }
+      if (action === 'confirm') return;
+    }
+    if (!e.repeat && pressed.hasOwnProperty(action)) pressed[action] = true;
+    keys[action] = true;
+  });
+  window.addEventListener('keyup', function (e) { var action = KEYMAP[e.code]; if (action) keys[action] = false; });
+  window.addEventListener('blur', function () { keys = Object.create(null); });
+
+  var cam = { yaw: 0, pitch: 0.42, distance: 3.4, goal: 3.4 };
+  var drag = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    canvas.focus();
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0, button: e.button, touch: e.pointerType === 'touch' };
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!drag || drag.id !== e.pointerId) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
+    cam.yaw -= dx * 0.006;
+    cam.pitch = Math.max(-0.25, Math.min(1.25, cam.pitch + dy * 0.005));
+  });
+  function endDrag(e) {
+    if (!drag || drag.id !== e.pointerId) return;
+    if (e.type === 'pointerup' && drag.moved < 6) {
+      if (talk.active) advance();
+      else if (drag.button === 0 && !drag.touch) pressed.attack = true;   // a click that was not a drag
+    }
+    drag = null;
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    cam.goal = Math.max(2.5, Math.min(10, cam.goal + (e.deltaY > 0 ? 0.6 : -0.6)));
+  }, { passive: false });
+
+  var stickVec = { x: 0, y: 0 }, runLatch = false;
+  var stick = $('stick'), knob = $('knob');
+  function showTouch() { document.body.classList.add('touching'); }
+  window.addEventListener('touchstart', showTouch, { passive: true });
+  if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) showTouch();
+  function stickMove(e) {
+    var r = stick.getBoundingClientRect();
+    var x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), y = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+    var len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+    stickVec.x = x; stickVec.y = y;
+    knob.style.transform = 'translate(' + (x * 33) + 'px,' + (y * 33) + 'px)';
+  }
+  stick.addEventListener('pointerdown', function (e) { stick.setPointerCapture(e.pointerId); stickMove(e); });
+  stick.addEventListener('pointermove', function (e) { if (stick.hasPointerCapture(e.pointerId)) stickMove(e); });
+  function stickEnd() { stickVec.x = 0; stickVec.y = 0; knob.style.transform = ''; }
+  stick.addEventListener('pointerup', stickEnd);
+  stick.addEventListener('pointercancel', stickEnd);
+  $('btn-jump').addEventListener('pointerdown', function (e) { e.preventDefault(); pressed.jump = true; });
+  $('btn-attack').addEventListener('pointerdown', function (e) { e.preventDefault(); pressed.attack = true; });
+  $('btn-run').addEventListener('click', function () {
+    runLatch = !runLatch;
+    this.classList.toggle('on', runLatch);
+    this.setAttribute('aria-pressed', String(runLatch));
+  });
+  function onActivate(el, fn) {
+    el.addEventListener('click', fn);
+    el.addEventListener('keydown', function (e) { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); e.stopPropagation(); fn(); } });
+  }
+  onActivate($('prompt'), function () { pressed.interact = true; });
+  onActivate($('dialogue'), function () { advance(); });
+
+  // ---------------------------------------------------------------- dialogue
+  var talk = { active: false, lines: [], index: 0, shown: 0, done: null };
+  var dlg = $('dialogue'), dlgWho = $('dlg-who'), dlgText = $('dlg-text');
+  var unlockAt = 0, clockNow = 0;
+
+  function say(lines, done) {
+    if (!lines || !lines.length) { if (done) done(); return; }
+    talk.active = true; talk.lines = lines; talk.index = 0; talk.done = done || null;
+    hero.locked = true;
+    stage.classList.add('talking');
+    dlg.hidden = false;
+    showLine();
+  }
+  function showLine() {
+    var line = talk.lines[talk.index];
+    talk.shown = 0;
+    dlg.dataset.who = line.who;
+    dlg.classList.remove('ready');
+    dlgWho.textContent = STORY.speakers[line.who] || '';
+    dlgText.textContent = '';
+    if (line.stage) onStage(line.stage);
+  }
+  function advance() {
+    if (!talk.active) return;
+    var line = talk.lines[talk.index];
+    if (talk.shown < line.text.length) { talk.shown = line.text.length; dlgText.textContent = line.text; dlg.classList.add('ready'); return; }
+    talk.index += 1;
+    if (talk.index < talk.lines.length) { showLine(); return; }
+    talk.active = false;
+    dlg.hidden = true;
+    stage.classList.remove('talking');
+    pressed.jump = pressed.attack = pressed.interact = false;
+    unlockAt = clockNow + 0.2;          // so the key that closed the box does not also jump
+    var done = talk.done; talk.done = null;
+    if (done) done();
+  }
+  function updateTalk(dt) {
+    if (!talk.active) return;
+    var line = talk.lines[talk.index];
+    if (talk.shown >= line.text.length) return;
+    talk.shown = Math.min(line.text.length, talk.shown + dt * 42);
+    dlgText.textContent = line.text.slice(0, Math.floor(talk.shown));
+    if (talk.shown >= line.text.length) dlg.classList.add('ready');
+  }
+
+  // ---------------------------------------------------------------- hero
+  var hero = { root: null, mixer: null, actions: {}, current: '', pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+               heading: WORLD.spawn.heading, onFloor: true, jumpsUsed: 0, attacking: false, flipping: false,
+               locked: true, cutscene: true };
+  hero.pos.set(WORLD.spawn.x, groundAt(WORLD.spawn.x, WORLD.spawn.z), WORLD.spawn.z);
+
+  function play(name, fade, timeScale) {
+    var next = hero.actions[name];
+    if (hero.current === name) { if (timeScale) next.timeScale = timeScale; return; }
+    var prev = hero.actions[hero.current];
+    next.reset();
+    next.timeScale = timeScale || 1;
+    next.setEffectiveWeight(1);
+    next.play();
+    if (prev) prev.crossFadeTo(next, fade, false);
+    hero.current = name;
+  }
+  function replay(name, fade, timeScale) { hero.current = hero.current === name ? '' : hero.current; play(name, fade, timeScale); }
+
+  function parseGlb(id, keepBitmaps, done) {
+    var bin = atob($(id).textContent.trim()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    // The <img> texture path works from blob: URLs everywhere this page is embedded.
+    var saved = window.createImageBitmap;
+    if (!keepBitmaps) { try { window.createImageBitmap = undefined; } catch (err) { /* read-only */ } }
+    function restore() { try { window.createImageBitmap = saved; } catch (err) { /* ignore */ } }
+    new THREE.GLTFLoader().parse(bytes.buffer, '', function (gltf) { restore(); done(gltf); },
+      function (err) { restore(); fail('모델을 읽지 못했습니다: ' + (err && err.message ? err.message : err)); });
+  }
+
+  // ---------------------------------------------------------------- world
+  var fx = { runes: [], memory: [], portal: null, pulse: 0, beacons: [] };
+  var found = [false, false, false], foundCount = 0, finished = false;
+  var flags = { left: false, edgeAt: -99 };
+  var POINTS = WORLD.interact;
+
+  function setupWorld(gltf) {
+    var world = gltf.scene;
+    world.traverse(function (o) {
+      if (!o.isMesh) return;
+      var n = o.name, m = o.material;
+      if (n.indexOf('terrain') === 0) {
+        o.receiveShadow = true;
+        if (m.map) m.map.anisotropy = renderer.capabilities.getMaxAnisotropy();   // keep the grass crisp at a distance
+      } else if (/^(trunks|trilithon|door_stone|altar|monolith|rune_stone|small_stone|rock_|rune_pillar)/.test(n)) {
+        o.castShadow = true; o.receiveShadow = true;
+      } else if (n === 'leaves') {
+        o.castShadow = true;   // shadows follow the leaf shapes, not the cards they are painted on
+        o.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: m.map, alphaTest: 0.45 });
+      }
+      if (n === 'moon') { m.fog = false; m.emissiveIntensity = 1.0; }
+      if (m.name.indexOf('rune_') === 0 && fx.runes.indexOf(m) < 0) fx.runes.push(m);
+      if (m.name === 'portal') fx.portal = m;
+      var mem = /^memory_(\d)$/.exec(m.name);
+      if (mem) fx.memory[parseInt(mem[1], 10) - 1] = m;
+    });
+    scene.add(world);
+    // Each memory stone gets a warm light and a faint beacon so it can be found from afar.
+    POINTS.forEach(function (pt) {
+      var mem = /^memory_(\d)$/.exec(pt.id);
+      if (!mem) return;
+      var light = new THREE.PointLight(srgb(0xffa040), 1.4, 16, 2);
+      light.position.set(pt.x, pt.y + 2.2, pt.z);
+      var beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.34, 46, 10, 1, true),
+        new THREE.MeshBasicMaterial({ color: srgb(0xffb060), transparent: true, opacity: 0.3, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+      beam.position.set(pt.x, pt.y + 25, pt.z);
+      scene.add(light, beam);
+      fx.beacons[parseInt(mem[1], 10) - 1] = { light: light, beam: beam };
+    });
+  }
+
+  function setupHero(gltf) {
+    hero.root = gltf.scene;
+    hero.root.traverse(function (o) {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.frustumCulled = false;   // the rest-pose bounds do not cover lying down or a flip
+      o.material.side = THREE.DoubleSide;
+      o.material.metalness = 0;
+    });
+    scene.add(hero.root);
+    hero.mixer = new THREE.AnimationMixer(hero.root);
+    gltf.animations.forEach(function (clip) {
+      var action = hero.mixer.clipAction(clip);
+      if (['Jump', 'DoubleJump', 'Attack', 'WakeUp'].indexOf(clip.name) >= 0) {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+      }
+      hero.actions[clip.name] = action;
+    });
+    hero.mixer.addEventListener('finished', function (e) {
+      var name = e.action.getClip().name;
+      if (name === 'Attack') hero.attacking = false;
+      if (name === 'DoubleJump') hero.flipping = false;
+    });
+  }
+
+  // ---------------------------------------------------------------- story
+  var intro = { woke: false, ending: false };
+  function onStage(name) {
+    if (name === 'open_eyes') $('veil').classList.add('open');
+    if ((name === 'wake' || name === 'standing') && !intro.woke) { intro.woke = true; play('WakeUp', 0.5); cam.goal = 4.4; }
+    if (name === 'pulse') fx.pulse = 2.8;
+  }
+  function setObjective() {
+    var o = STORY.objective;
+    $('objective').textContent = finished ? '메갈리스의 문이 열리려 한다' : foundCount === 0 ? o.start : foundCount < 3 ? o.progress.replace('{n}', foundCount) : o.done;
+  }
+  function startIntro() {
+    play('Sleep', 0);
+    say(STORY.intro, function () { intro.ending = true; hero.locked = true; });
+  }
+  function finishIntro() {
+    intro.ending = false;
+    hero.cutscene = false; hero.locked = false;
+    play('Idle', 0.4);
+    cam.goal = 5.6;
+    setObjective();
+    $('nameplate').hidden = false;
+    $('legend').hidden = false;
+  }
+  function interact(pt) {
+    var entry = STORY.interact[pt.id], mem = /^memory_(\d)$/.exec(pt.id);
+    hero.vel.x = hero.vel.z = 0;
+    if (mem) {
+      var i = parseInt(mem[1], 10) - 1;
+      if (found[i]) { say(entry.lines_again); return; }
+      fx.pulse = 1.5;
+      say(entry.lines, function () {
+        found[i] = true; foundCount += 1; setObjective();
+        if (foundCount === 3) say(STORY.events.all_memories);
+      });
+    } else if (pt.id === 'door' && foundCount === 3) {
+      fx.pulse = 3;
+      say(entry.lines_done, function () { finished = true; setObjective(); });
+    } else say(entry.lines);
+  }
+  var nearest = null;
+  function updatePrompt() {
+    nearest = null;
+    if (!hero.locked && hero.onFloor) {
+      var best = 1e9;
+      for (var i = 0; i < POINTS.length; i++) {
+        var d = Math.hypot(hero.pos.x - POINTS[i].x, hero.pos.z - POINTS[i].z);
+        if (d < POINTS[i].radius && d < best && Math.abs(hero.pos.y - POINTS[i].y) < 2.5) { best = d; nearest = POINTS[i]; }
+      }
+    }
+    var el = $('prompt');
+    if (!nearest) { if (!el.hidden) el.hidden = true; return; }
+    var name = STORY.interact[nearest.id].name;
+    if (el.hidden || $('prompt-name').textContent !== name) { $('prompt-name').textContent = name; el.hidden = false; }
+  }
+
+  // ---------------------------------------------------------------- simulation
+  function approach(value, target, step) { return value < target ? Math.min(value + step, target) : Math.max(value - step, target); }
+
+  function step(dt) {
+    var p = hero.pos, v = hero.vel;
+    if (hero.locked && !talk.active && !intro.ending && !hero.cutscene && clockNow >= unlockAt) hero.locked = false;
+    var free = !hero.locked;
+    var ix = free ? (keys.right ? 1 : 0) - (keys.left ? 1 : 0) + stickVec.x : 0;
+    var iy = free ? (keys.forward ? 1 : 0) - (keys.back ? 1 : 0) - stickVec.y : 0;
+    var len = Math.hypot(ix, iy), dirX = 0, dirZ = 0;
+    if (len > 0.12) {
+      ix /= Math.max(len, 1); iy /= Math.max(len, 1);
+      var fwx = -Math.sin(cam.yaw), fwz = -Math.cos(cam.yaw), rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
+      dirX = rx * ix + fwx * iy; dirZ = rz * ix + fwz * iy;
+      var dl = Math.hypot(dirX, dirZ); dirX /= dl; dirZ /= dl;
+    }
+    var running = keys.run || runLatch || Math.hypot(stickVec.x, stickVec.y) > 0.92;
+    var speed = running ? RUN_SPEED : WALK_SPEED;
+    if (hero.attacking && hero.onFloor) speed = 0;
+    var accel = (hero.onFloor ? ACCEL : AIR_ACCEL) * dt;
+    v.x = approach(v.x, dirX * speed, accel);
+    v.z = approach(v.z, dirZ * speed, accel);
+
+    if (free) {
+      if (pressed.interact && nearest) interact(nearest);
+      else if (pressed.jump) {
+        if (hero.onFloor) { hero.jumpsUsed = 1; v.y = JUMP_VELOCITY; hero.onFloor = false; hero.attacking = false; replay('Jump', 0.08); }
+        else if (hero.jumpsUsed < MAX_JUMPS) { hero.jumpsUsed = MAX_JUMPS; v.y = DOUBLE_JUMP_VELOCITY; hero.flipping = true; replay('DoubleJump', 0.05); }
+      } else if (pressed.attack && hero.onFloor && !hero.attacking) { hero.attacking = true; replay('Attack', BLEND, ATTACK_SPEED); }
+    }
+    pressed.jump = pressed.attack = pressed.interact = false;
+
+    if ((dirX || dirZ) && !(hero.attacking && hero.onFloor)) {
+      var want = Math.atan2(dirX, dirZ), diff = Math.atan2(Math.sin(want - hero.heading), Math.cos(want - hero.heading));
+      hero.heading += diff * Math.min(1, TURN_SPEED * dt);
+    }
+
+    // Sideways first (stones, trunks, the world's edge), then vertical (ground and stone tops).
+    p.x += v.x * dt; p.z += v.z * dt;
+    pushOut(p, v);
+    var r = Math.hypot(p.x, p.z);
+    if (r > WORLD.bounds) {
+      p.x *= WORLD.bounds / r; p.z *= WORLD.bounds / r;
+      if (free && clockNow - flags.edgeAt > 20) { flags.edgeAt = clockNow; v.x = v.z = 0; say(STORY.events.world_edge); }
+    }
+    if (free && !flags.left && r > WORLD.plateau_radius + 7) { flags.left = true; say(STORY.events.leave_circle); }
+
+    var floor = floorAt(p.x, p.z, p.y);
+    if (hero.onFloor) {
+      if (p.y - floor <= 0.5) { p.y = floor; v.y = 0; }      // follow the slope
+      else hero.onFloor = false;                               // stepped off a stone
+    } else {
+      v.y -= GRAVITY * dt;
+      p.y += v.y * dt;
+      if (v.y <= 0 && p.y <= floor) { p.y = floor; v.y = 0; hero.onFloor = true; hero.jumpsUsed = 0; hero.flipping = false; }
+    }
+
+    if (!hero.cutscene && !hero.attacking && !hero.flipping) {
+      var ground = Math.hypot(v.x, v.z);
+      if (!hero.onFloor) {
+        var rising = hero.current === 'Jump' && hero.actions.Jump.isRunning();
+        if (v.y <= 0.5 || !rising) play('Fall', BLEND);
+      } else if (ground > (WALK_SPEED + RUN_SPEED) / 2) play('Run', BLEND, Math.max(0.7, Math.min(1.6, ground / RUN_CLIP_SPEED)));
+      else if (ground > 0.2) play('Walk', BLEND, Math.max(0.6, Math.min(1.6, ground / WALK_CLIP_SPEED)));
+      else play('Idle', BLEND);
+    }
+  }
+
+  function updateEffects(dt) {
+    fx.pulse = Math.max(0, fx.pulse - dt);
+    var breathe = 0.5 + 0.5 * Math.sin(clockNow * 1.7);
+    var boost = fx.pulse > 0 ? 1.4 * Math.sin(Math.min(1, fx.pulse) * Math.PI * 0.5) * (0.7 + 0.3 * Math.sin(clockNow * 9)) : 0;
+    for (var i = 0; i < fx.runes.length; i++) fx.runes[i].emissiveIntensity = 0.34 + 0.14 * breathe + boost * 0.8;
+    for (var k = 0; k < 3; k++) {
+      if (fx.memory[k]) fx.memory[k].emissiveIntensity = found[k] ? 1.2 : 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(clockNow * 2.6 + k * 2));
+      if (fx.beacons[k]) {
+        fx.beacons[k].beam.material.opacity = found[k] ? 0.07 : 0.2 + 0.12 * breathe;
+        fx.beacons[k].light.intensity = found[k] ? 0.9 : 1.0 + 0.8 * breathe;
+      }
+    }
+    if (fx.portal) fx.portal.emissiveIntensity = (foundCount === 3 ? 1.1 : 0.6) + (foundCount === 3 ? 0.4 : 0.15) * Math.sin(clockNow * 2.2) + boost * 0.5;
+  }
+
+  // ---------------------------------------------------------------- frame loop
+  var focus = new THREE.Vector3(hero.pos.x, hero.pos.y + 0.4, hero.pos.z), want = new THREE.Vector3();
+
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+  resize();
+
+  function update(dt) {
+    clockNow += dt;
+    cam.yaw += ((keys.camLeft ? 1 : 0) - (keys.camRight ? 1 : 0)) * 2.2 * dt;
+    cam.distance += (cam.goal - cam.distance) * Math.min(1, 2.5 * dt);
+    updateTalk(dt);
+    if (hero.root) {
+      step(dt);
+      hero.mixer.update(dt);
+      if (intro.ending && !hero.actions.WakeUp.isRunning()) finishIntro();
+      hero.root.position.copy(hero.pos);
+      hero.root.rotation.y = hero.heading;
+      updatePrompt();
+    }
+    updateEffects(dt);
+    var lying = hero.cutscene && !intro.woke;
+    want.set(hero.pos.x, hero.pos.y + (lying ? 0.45 : 1.3), hero.pos.z);
+    focus.lerp(want, Math.min(1, (lying ? 3 : 8) * dt));
+    var cp = Math.cos(cam.pitch);
+    var cx = focus.x + Math.sin(cam.yaw) * cp * cam.distance, cz = focus.z + Math.cos(cam.yaw) * cp * cam.distance;
+    camera.position.set(cx, Math.max(groundAt(cx, cz) + 0.35, focus.y + Math.sin(cam.pitch) * cam.distance), cz);
+    camera.lookAt(focus);
+    sky.position.copy(camera.position);
+    sun.target.position.copy(focus);
+    sun.position.copy(focus).add(SUN_OFFSET);
+  }
+
+  var clock = new THREE.Clock();
+  function frame() {
+    requestAnimationFrame(frame);
+    update(Math.min(clock.getDelta(), 0.05));
+    renderer.render(scene, camera);
+  }
+
+  parseGlb('world-glb', false, function (worldGltf) {
+    setupWorld(worldGltf);
+    parseGlb('hero-glb', false, function (heroGltf) {
+      setupHero(heroGltf);
+      curtain.hidden = true;
+      startIntro();
+      // Handy from the console: inspect the state, or advance the game by hand.
+      window.__game = { hero: hero, cam: cam, talk: talk, tick: update, advance: advance, found: found, points: POINTS,
+                        groundAt: groundAt, flags: flags, render: function () { renderer.render(scene, camera); } };
+      frame();
+    });
+  });
+})();
+</script>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GLB inspector</title>
+<style>
+  html, body { margin: 0; background: #777; overflow: hidden; font: 12px monospace; color: #fff; }
+  #info { position: fixed; left: 6px; top: 4px; white-space: pre; text-shadow: 0 0 3px #000; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="info">loading</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// Query: ?m=<glb url>&a=<clip name>&t=<time fraction 0..1>&views=4&bones=1
+const q = new URLSearchParams(location.search);
+const url = q.get('m');
+const views = parseInt(q.get('views') || '4', 10);
+const info = document.getElementById('info');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(1);
+const W = 1560, H = parseInt(q.get('h') || '720', 10);
+renderer.setSize(W, H, false);
+renderer.domElement.style.cssText = 'width:100%;height:auto;display:block';
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x808890);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 2.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(2, 4, 3);
+scene.add(sun);
+scene.add(new THREE.GridHelper(4, 8, 0x333333, 0x555555));
+
+const gltf = await new GLTFLoader().loadAsync(url);
+const root = gltf.scene;
+scene.add(root);
+root.traverse(o => {
+  if (!o.isMesh) return;
+  if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+  if (q.get('unlit')) o.material = new THREE.MeshBasicMaterial({ map: o.material.map });
+  if (q.get('w') && o.isSkinnedMesh) {
+    // Paint skin weights: red = bones matching ?w=, green = bones matching ?w2=
+    const match = s => o.skeleton.bones.map(b => s && s.split(',').some(k => b.name.includes(k)));
+    const m1 = match(q.get('w')), m2 = match(q.get('w2'));
+    const si = o.geometry.attributes.skinIndex, sw = o.geometry.attributes.skinWeight;
+    const col = new Float32Array(si.count * 3);
+    for (let v = 0; v < si.count; v++) {
+      let a = 0, b = 0;
+      for (let k = 0; k < 4; k++) {
+        const j = si.getComponent(v, k), wt = sw.getComponent(v, k);
+        if (m1[j]) a += wt;
+        if (m2[j]) b += wt;
+      }
+      col[v * 3] = 0.25 + 0.75 * a; col[v * 3 + 1] = 0.25 + 0.75 * b; col[v * 3 + 2] = 0.25;
+    }
+    o.geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    o.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+  }
+});
+let mixer = null;
+let lines = [`clips: ${gltf.animations.map(a => `${a.name}(${a.duration.toFixed(2)}s)`).join(', ') || 'none'}`];
+if (q.get('a')) {
+  const clip = gltf.animations.find(a => a.name === q.get('a'));
+  if (clip) {
+    mixer = new THREE.AnimationMixer(root);
+    mixer.clipAction(clip).play();
+    mixer.setTime(clip.duration * parseFloat(q.get('t') || '0'));
+  } else lines.push('clip not found: ' + q.get('a'));
+}
+root.updateMatrixWorld(true);
+if (q.get('bones')) {
+  const h = new THREE.SkeletonHelper(root);
+  h.material.depthTest = false;
+  scene.add(h);
+}
+const box = new THREE.Box3().setFromObject(root);
+const size = box.getSize(new THREE.Vector3());
+const ctr = box.getCenter(new THREE.Vector3());
+lines.push(`bbox min ${box.min.toArray().map(v => v.toFixed(3))} max ${box.max.toArray().map(v => v.toFixed(3))}`);
+info.textContent = lines.join('\n');
+
+// strip=N: N columns of the same yaw at evenly spaced clip times (t0..t1 fractions).
+const strip = parseInt(q.get('strip') || '0', 10);
+const yaw = parseFloat(q.get('yaw') || '0');
+const t0 = parseFloat(q.get('t0') || '0'), t1 = parseFloat(q.get('t1') || '1');
+const clipDur = mixer ? gltf.animations.find(a => a.name === q.get('a')).duration : 0;
+if (q.get('sheet')) {
+  // sheet=ClipA,ClipB: one row per clip, 6 evenly spaced frames, drawn from ?yaw.
+  const names = q.get('sheet').split(',');
+  const rows = names.length, n = 6, cw = W / n, ch = H / rows;
+  const sm = new THREE.AnimationMixer(root);
+  renderer.setScissorTest(true);
+  names.forEach((name, r) => {
+    const clip = gltf.animations.find(a => a.name === name);
+    sm.stopAllAction();
+    const act = sm.clipAction(clip);
+    act.play();
+    for (let i = 0; i < n; i++) {
+      sm.setTime(clip.duration * i / n);
+      root.updateMatrixWorld(true);
+      const sp = 1.2, aspect = cw / ch;
+      const cam = new THREE.OrthographicCamera(-sp * aspect, sp * aspect, sp, -sp, 0.01, 100);
+      const rad = yaw * Math.PI / 180;
+      cam.position.set(Math.sin(rad) * 10, 0.95, Math.cos(rad) * 10);
+      cam.lookAt(0, 0.95, 0);
+      const y = H - (r + 1) * ch;
+      renderer.setViewport(i * cw, y, cw, ch);
+      renderer.setScissor(i * cw, y, cw, ch);
+      renderer.render(scene, cam);
+    }
+  });
+  info.textContent = names.join(' / ');
+  throw new Error('sheet done');
+}
+const cols = strip
+  ? Array.from({ length: strip }, (_, i) => ({ deg: yaw, t: t0 + (t1 - t0) * i / strip }))
+  : (views === 1 ? [yaw] : [0, 90, 180, 270].slice(0, views)).map(deg => ({ deg, t: null }));
+// cy/span: frame a band of the model (e.g. cy=0.95&span=0.35 for the hips).
+const span = q.get('span') ? parseFloat(q.get('span')) : strip ? 1.15 : Math.max(size.y, size.x, size.z) * 0.62;
+const mid = q.get('cy') ? new THREE.Vector3(0, parseFloat(q.get('cy')), 0) : strip ? new THREE.Vector3(0, 0.95, 0) : ctr;
+renderer.setScissorTest(true);
+const w = W / cols.length;
+cols.forEach(({ deg, t }, i) => {
+  if (t !== null && mixer) { mixer.setTime(clipDur * t); root.updateMatrixWorld(true); }
+  const aspect = w / H;
+  const cam = new THREE.OrthographicCamera(-span * aspect, span * aspect, span, -span, 0.01, 100);
+  const r = deg * Math.PI / 180;
+  cam.position.set(mid.x + Math.sin(r) * 10, mid.y, mid.z + Math.cos(r) * 10);
+  cam.lookAt(mid);
+  renderer.setViewport(i * w, 0, w, H);
+  renderer.setScissor(i * w, 0, w, H);
+  renderer.render(scene, cam);
+});
+window.__done = true;
+</script>
+</body>
+</html>

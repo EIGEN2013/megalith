@@ -1,0 +1,731 @@
+{
+ "boulder_01": {
+  "kind": "rock",
+  "tris": 26611,
+  "size": [
+   1.275,
+   1.01,
+   1.838
+  ]
+ },
+ "namaqualand_boulder_02": {
+  "kind": "rock",
+  "tris": 6000,
+  "size": [
+   2.525,
+   0.88,
+   1.233
+  ]
+ },
+ "rock_moss_set_01_0": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   2.235,
+   1.469,
+   3.38
+  ]
+ },
+ "rock_moss_set_01_1": {
+  "kind": "rock",
+  "tris": 2999,
+  "size": [
+   2.647,
+   1.262,
+   3.265
+  ]
+ },
+ "rock_moss_set_01_2": {
+  "kind": "rock",
+  "tris": 2999,
+  "size": [
+   2.108,
+   1.099,
+   2.08
+  ]
+ },
+ "rock_moss_set_01_3": {
+  "kind": "rock",
+  "tris": 2999,
+  "size": [
+   2.13,
+   1.77,
+   1.965
+  ]
+ },
+ "rock_moss_set_01_4": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.818,
+   1.208,
+   3.001
+  ]
+ },
+ "rock_moss_set_01_5": {
+  "kind": "rock",
+  "tris": 2999,
+  "size": [
+   2.129,
+   1.255,
+   2.759
+  ]
+ },
+ "rock_moss_set_02_0": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.693,
+   0.744,
+   1.215
+  ]
+ },
+ "rock_moss_set_02_1": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.205,
+   0.526,
+   0.984
+  ]
+ },
+ "rock_moss_set_02_2": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.629,
+   0.609,
+   1.014
+  ]
+ },
+ "rock_moss_set_02_3": {
+  "kind": "rock",
+  "tris": 2999,
+  "size": [
+   2.204,
+   0.766,
+   1.553
+  ]
+ },
+ "rock_moss_set_02_4": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.955,
+   1.304,
+   1.525
+  ]
+ },
+ "rock_moss_set_02_5": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   1.576,
+   0.736,
+   1.443
+  ]
+ },
+ "rock_moss_set_02_6": {
+  "kind": "rock",
+  "tris": 3000,
+  "size": [
+   2.088,
+   1.255,
+   1.142
+  ]
+ },
+ "rock_face_01": {
+  "kind": "cliff",
+  "tris": 8000,
+  "size": [
+   4.954,
+   3.567,
+   3.826
+  ]
+ },
+ "rock_face_02": {
+  "kind": "cliff",
+  "tris": 8000,
+  "size": [
+   2.711,
+   2.475,
+   2.128
+  ]
+ },
+ "rock_07": {
+  "kind": "pebble",
+  "tris": 400,
+  "size": [
+   0.169,
+   0.144,
+   0.321
+  ]
+ },
+ "rock_09": {
+  "kind": "pebble",
+  "tris": 300,
+  "size": [
+   0.074,
+   0.032,
+   0.144
+  ]
+ },
+ "stone_01": {
+  "kind": "pebble",
+  "tris": 399,
+  "size": [
+   0.147,
+   0.071,
+   0.089
+  ]
+ },
+ "tree_stump_01": {
+  "kind": "stump",
+  "tris": 4000,
+  "size": [
+   1.424,
+   0.572,
+   1.591
+  ]
+ },
+ "tree_stump_02": {
+  "kind": "stump",
+  "tris": 4000,
+  "size": [
+   1.522,
+   0.523,
+   1.392
+  ]
+ },
+ "dead_tree_trunk_02": {
+  "kind": "log",
+  "tris": 5000,
+  "size": [
+   4.052,
+   1.057,
+   1.053
+  ]
+ },
+ "root_cluster_01": {
+  "kind": "roots",
+  "tris": 6000,
+  "size": [
+   4.121,
+   1.508,
+   2.684
+  ]
+ },
+ "dry_branches_medium_01_0": {
+  "kind": "twigs",
+  "tris": 3000,
+  "size": [
+   0.323,
+   0.34,
+   1.297
+  ]
+ },
+ "dry_branches_medium_01_1": {
+  "kind": "twigs",
+  "tris": 3000,
+  "size": [
+   0.151,
+   0.142,
+   1.039
+  ]
+ },
+ "dry_branches_medium_01_2": {
+  "kind": "twigs",
+  "tris": 2999,
+  "size": [
+   0.129,
+   0.143,
+   0.777
+  ]
+ },
+ "fern_02_0": {
+  "kind": "fern",
+  "tris": 784,
+  "size": [
+   0.552,
+   0.287,
+   0.613
+  ]
+ },
+ "fern_02_1": {
+  "kind": "fern",
+  "tris": 2384,
+  "size": [
+   0.99,
+   0.428,
+   0.894
+  ]
+ },
+ "fern_02_2": {
+  "kind": "fern",
+  "tris": 2248,
+  "size": [
+   0.874,
+   0.349,
+   0.765
+  ]
+ },
+ "fern_02_3": {
+  "kind": "fern",
+  "tris": 816,
+  "size": [
+   0.573,
+   0.213,
+   0.593
+  ]
+ },
+ "shrub_01": {
+  "kind": "shrub",
+  "tris": 20000,
+  "size": [
+   2.586,
+   0.396,
+   0.219
+  ]
+ },
+ "shrub_02_0": {
+  "kind": "shrub",
+  "tris": 7590,
+  "size": [
+   1.312,
+   1.689,
+   1.641
+  ]
+ },
+ "shrub_02_1": {
+  "kind": "shrub",
+  "tris": 5242,
+  "size": [
+   1.11,
+   1.506,
+   1.28
+  ]
+ },
+ "shrub_02_2": {
+  "kind": "shrub",
+  "tris": 7999,
+  "size": [
+   1.767,
+   1.315,
+   2.285
+  ]
+ },
+ "shrub_02_3": {
+  "kind": "shrub",
+  "tris": 5188,
+  "size": [
+   1.08,
+   1.229,
+   1.098
+  ]
+ },
+ "shrub_03_0": {
+  "kind": "shrub",
+  "tris": 2385,
+  "size": [
+   0.201,
+   0.403,
+   0.151
+  ]
+ },
+ "shrub_03_1": {
+  "kind": "shrub",
+  "tris": 2134,
+  "size": [
+   0.184,
+   0.353,
+   0.123
+  ]
+ },
+ "shrub_03_2": {
+  "kind": "shrub",
+  "tris": 1790,
+  "size": [
+   0.096,
+   0.304,
+   0.113
+  ]
+ },
+ "shrub_03_3": {
+  "kind": "shrub",
+  "tris": 1978,
+  "size": [
+   0.113,
+   0.256,
+   0.089
+  ]
+ },
+ "shrub_04": {
+  "kind": "shrub",
+  "tris": 10000,
+  "size": [
+   0.584,
+   0.219,
+   0.146
+  ]
+ },
+ "grass_medium_01_0": {
+  "kind": "grass",
+  "tris": 3000,
+  "size": [
+   0.317,
+   0.146,
+   0.327
+  ]
+ },
+ "grass_medium_01_1": {
+  "kind": "grass",
+  "tris": 3000,
+  "size": [
+   0.284,
+   0.169,
+   0.276
+  ]
+ },
+ "grass_medium_01_2": {
+  "kind": "grass",
+  "tris": 3000,
+  "size": [
+   0.279,
+   0.142,
+   0.255
+  ]
+ },
+ "grass_medium_01_3": {
+  "kind": "grass",
+  "tris": 2287,
+  "size": [
+   0.216,
+   0.218,
+   0.221
+  ]
+ },
+ "grass_medium_01_4": {
+  "kind": "grass",
+  "tris": 1257,
+  "size": [
+   0.188,
+   0.178,
+   0.201
+  ]
+ },
+ "grass_medium_01_5": {
+  "kind": "grass",
+  "tris": 1466,
+  "size": [
+   0.192,
+   0.145,
+   0.203
+  ]
+ },
+ "grass_medium_01_6": {
+  "kind": "grass",
+  "tris": 833,
+  "size": [
+   0.185,
+   0.14,
+   0.162
+  ]
+ },
+ "grass_medium_01_7": {
+  "kind": "grass",
+  "tris": 653,
+  "size": [
+   0.166,
+   0.1,
+   0.19
+  ]
+ },
+ "grass_medium_01_8": {
+  "kind": "grass",
+  "tris": 290,
+  "size": [
+   0.161,
+   0.323,
+   0.159
+  ]
+ },
+ "grass_medium_01_9": {
+  "kind": "grass",
+  "tris": 310,
+  "size": [
+   0.15,
+   0.286,
+   0.135
+  ]
+ },
+ "grass_medium_01_10": {
+  "kind": "grass",
+  "tris": 340,
+  "size": [
+   0.153,
+   0.236,
+   0.128
+  ]
+ },
+ "grass_medium_01_11": {
+  "kind": "grass",
+  "tris": 79,
+  "size": [
+   0.067,
+   0.112,
+   0.074
+  ]
+ },
+ "grass_medium_01_12": {
+  "kind": "grass",
+  "tris": 28,
+  "size": [
+   0.024,
+   0.06,
+   0.034
+  ]
+ },
+ "grass_medium_01_13": {
+  "kind": "grass",
+  "tris": 40,
+  "size": [
+   0.016,
+   0.082,
+   0.029
+  ]
+ },
+ "grass_medium_01_14": {
+  "kind": "grass",
+  "tris": 32,
+  "size": [
+   0.043,
+   0.048,
+   0.089
+  ]
+ },
+ "grass_medium_01_15": {
+  "kind": "grass",
+  "tris": 62,
+  "size": [
+   0.085,
+   0.049,
+   0.074
+  ]
+ },
+ "grass_medium_01_16": {
+  "kind": "grass",
+  "tris": 60,
+  "size": [
+   0.055,
+   0.047,
+   0.069
+  ]
+ },
+ "nettle_plant_0": {
+  "kind": "weed",
+  "tris": 3998,
+  "size": [
+   0.077,
+   0.131,
+   0.089
+  ]
+ },
+ "nettle_plant_1": {
+  "kind": "weed",
+  "tris": 3999,
+  "size": [
+   0.065,
+   0.105,
+   0.066
+  ]
+ },
+ "nettle_plant_2": {
+  "kind": "weed",
+  "tris": 3592,
+  "size": [
+   0.064,
+   0.063,
+   0.043
+  ]
+ },
+ "nettle_plant_3": {
+  "kind": "weed",
+  "tris": 1088,
+  "size": [
+   0.06,
+   0.022,
+   0.039
+  ]
+ },
+ "nettle_plant_4": {
+  "kind": "weed",
+  "tris": 3999,
+  "size": [
+   0.104,
+   0.217,
+   0.09
+  ]
+ },
+ "nettle_plant_5": {
+  "kind": "weed",
+  "tris": 4000,
+  "size": [
+   0.082,
+   0.193,
+   0.095
+  ]
+ },
+ "dandelion_01_0": {
+  "kind": "flower",
+  "tris": 4000,
+  "size": [
+   0.221,
+   0.165,
+   0.257
+  ]
+ },
+ "dandelion_01_1": {
+  "kind": "flower",
+  "tris": 4000,
+  "size": [
+   0.202,
+   0.114,
+   0.218
+  ]
+ },
+ "dandelion_01_2": {
+  "kind": "flower",
+  "tris": 3180,
+  "size": [
+   0.17,
+   0.101,
+   0.167
+  ]
+ },
+ "dandelion_01_3": {
+  "kind": "flower",
+  "tris": 2604,
+  "size": [
+   0.122,
+   0.055,
+   0.144
+  ]
+ },
+ "dandelion_01_4": {
+  "kind": "flower",
+  "tris": 2080,
+  "size": [
+   0.214,
+   0.047,
+   0.205
+  ]
+ },
+ "moss_01_0": {
+  "kind": "moss",
+  "tris": 24,
+  "size": [
+   0.014,
+   0.026,
+   0.016
+  ]
+ },
+ "moss_01_1": {
+  "kind": "moss",
+  "tris": 16,
+  "size": [
+   0.009,
+   0.015,
+   0.01
+  ]
+ },
+ "moss_01_2": {
+  "kind": "moss",
+  "tris": 24,
+  "size": [
+   0.018,
+   0.028,
+   0.014
+  ]
+ },
+ "moss_01_3": {
+  "kind": "moss",
+  "tris": 16,
+  "size": [
+   0.014,
+   0.027,
+   0.016
+  ]
+ },
+ "moss_01_4": {
+  "kind": "moss",
+  "tris": 20,
+  "size": [
+   0.011,
+   0.022,
+   0.013
+  ]
+ },
+ "moss_01_5": {
+  "kind": "moss",
+  "tris": 20,
+  "size": [
+   0.013,
+   0.03,
+   0.013
+  ]
+ },
+ "moss_01_6": {
+  "kind": "moss",
+  "tris": 16,
+  "size": [
+   0.013,
+   0.022,
+   0.009
+  ]
+ },
+ "moss_01_7": {
+  "kind": "moss",
+  "tris": 6,
+  "size": [
+   0.011,
+   0.018,
+   0.006
+  ]
+ },
+ "moss_01_8": {
+  "kind": "moss",
+  "tris": 6,
+  "size": [
+   0.016,
+   0.015,
+   0.013
+  ]
+ },
+ "moss_01_9": {
+  "kind": "moss",
+  "tris": 8,
+  "size": [
+   0.017,
+   0.009,
+   0.019
+  ]
+ },
+ "moss_01_10": {
+  "kind": "moss",
+  "tris": 24,
+  "size": [
+   0.021,
+   0.034,
+   0.011
+  ]
+ },
+ "moss_01_11": {
+  "kind": "moss",
+  "tris": 24,
+  "size": [
+   0.018,
+   0.037,
+   0.012
+  ]
+ }
+}

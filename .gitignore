@@ -1,0 +1,17 @@
+# Downloaded source scans (Poly Haven, ~1.3 GB): re-fetch with tools/fetch_polyhaven.py
+ph/
+# Raw downloads of the published artifact and scratch renders
+raw/
+assets_src/hq/trees_tex/_*
+assets_src/hq/_*
+assets_src/hq/*_sheet*.jpg
+assets_src/monsters/*_old.glb
+# Build output: regenerate with `python tools/build_megalith.py`
+web/megalith/dist/
+web/megalith/main.recovered.js
+# Tooling noise
+__pycache__/
+*.pyc
+*.blend1
+.claude/
+.godot/

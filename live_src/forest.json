@@ -1,0 +1,245 @@
+{
+ "instances": [
+  {
+   "set": "blades",
+   "mesh": "proto_blades_teal",
+   "offset": 0,
+   "count": 177,
+   "draw": "chunks",
+   "far": 46
+  },
+  {
+   "set": "blades",
+   "mesh": "proto_blades_violet",
+   "offset": 177,
+   "count": 153,
+   "draw": "chunks",
+   "far": 46
+  },
+  {
+   "set": "curl",
+   "mesh": "proto_curl_teal",
+   "offset": 330,
+   "count": 110,
+   "draw": "chunks",
+   "far": 36
+  },
+  {
+   "set": "curl",
+   "mesh": "proto_curl_violet",
+   "offset": 440,
+   "count": 156,
+   "draw": "chunks",
+   "far": 36
+  },
+  {
+   "set": "fern",
+   "mesh": "proto_fern_green",
+   "offset": 596,
+   "count": 220,
+   "draw": "chunks",
+   "far": 48
+  },
+  {
+   "set": "fern",
+   "mesh": "proto_fern_teal",
+   "offset": 816,
+   "count": 274,
+   "draw": "chunks",
+   "far": 48
+  },
+  {
+   "set": "flower",
+   "mesh": "proto_flower_gold",
+   "offset": 1090,
+   "count": 226,
+   "draw": "chunks",
+   "far": 38
+  },
+  {
+   "set": "flower",
+   "mesh": "proto_flower_pink",
+   "offset": 1316,
+   "count": 239,
+   "draw": "chunks",
+   "far": 38
+  },
+  {
+   "set": "flower",
+   "mesh": "proto_flower_violet",
+   "offset": 1555,
+   "count": 193,
+   "draw": "chunks",
+   "far": 38
+  },
+  {
+   "set": "grass",
+   "mesh": "proto_grass_a",
+   "offset": 1748,
+   "count": 15981,
+   "draw": "chunks",
+   "far": 32
+  },
+  {
+   "set": "grass",
+   "mesh": "proto_grass_b",
+   "offset": 17729,
+   "count": 8817,
+   "draw": "chunks",
+   "far": 32
+  },
+  {
+   "set": "grass",
+   "mesh": "proto_grass_c",
+   "offset": 26546,
+   "count": 7939,
+   "draw": "chunks",
+   "far": 32
+  },
+  {
+   "set": "grass",
+   "mesh": "proto_grass_teal",
+   "offset": 34485,
+   "count": 7429,
+   "draw": "chunks",
+   "far": 32
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_glow_small",
+   "offset": 41914,
+   "count": 150,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_glow_teal",
+   "offset": 42064,
+   "count": 120,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_glow_violet",
+   "offset": 42184,
+   "count": 22,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_gold",
+   "offset": 42206,
+   "count": 48,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_orange",
+   "offset": 42254,
+   "count": 90,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "mush",
+   "mesh": "proto_mush_tan",
+   "offset": 42344,
+   "count": 120,
+   "draw": "chunks",
+   "far": 44
+  },
+  {
+   "set": "pebble",
+   "mesh": "proto_pebble_0",
+   "offset": 42464,
+   "count": 87,
+   "draw": "chunks",
+   "far": 28
+  },
+  {
+   "set": "pebble",
+   "mesh": "proto_pebble_1",
+   "offset": 42551,
+   "count": 168,
+   "draw": "chunks",
+   "far": 28
+  },
+  {
+   "set": "pebble",
+   "mesh": "proto_pebble_2",
+   "offset": 42719,
+   "count": 170,
+   "draw": "chunks",
+   "far": 28
+  },
+  {
+   "set": "pebble",
+   "mesh": "proto_pebble_3",
+   "offset": 42889,
+   "count": 95,
+   "draw": "chunks",
+   "far": 28
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_giant",
+   "offset": 42984,
+   "count": 2,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_giant_b",
+   "offset": 42986,
+   "count": 2,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_green",
+   "offset": 42988,
+   "count": 32,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_green_b",
+   "offset": 43020,
+   "count": 40,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_magenta",
+   "offset": 43060,
+   "count": 21,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_teal",
+   "offset": 43081,
+   "count": 12,
+   "draw": "each",
+   "far": 200
+  },
+  {
+   "set": "tree",
+   "mesh": "proto_tree_violet",
+   "offset": 43093,
+   "count": 25,
+   "draw": "each",
+   "far": 200
+  }
+ ],
+ "chunk": 24.0
+}
