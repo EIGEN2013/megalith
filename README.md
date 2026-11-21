@@ -48,6 +48,7 @@ Blender 5.3 스크립트는 `blender --background --factory-startup --python too
 | 몬스터 (고폴리 조각 → 텍스처 굽기) | `tools/hq_golem.py`, `tools/hq_horror.py` (Blender, 공용 `bl_pbr.py`) | `assets_src/monsters/*.glb` |
 | 칼·도끼·가방 | `tools/hq_items.py` (Blender) | `assets_src/items/items_hq.glb` |
 | 주울 것 (촉수 고기·골렘 핵·통나무 + 사과·배 스캔) | `python tools/fetch_polyhaven.py models 1k food_apple_01 food_pears_asian_01` → `tools/hq_pickups.py` (Blender) | `assets_src/items/pickups_hq.glb`, `pickups_food.glb` |
+| 마을 확장 (새 건물 7채 · 성벽 · 성문 · 실내 3곳) | `python tools/hq_village.py` (배치: `tools/village_plan.py`, 부품: `village_kit.py` · `village_roof.py` · `village_interior.py`, 기하: `geo_kit.py`) → 그 뒤 `python tools/build_land.py` | `assets_src/village_ext/village_ext.glb`, `village_ext.json` |
 | 마을 표면 텍스처 | `python tools/hq_textures.py` | `web/megalith/tex/` |
 | 주민 얼굴·피부 | `python tools/npc_faces.py`, `python tools/npc_textures.py`, `python tools/build_npcs.py` | `live_src/npcs.glb` |
 | 최종 빌드 | `python tools/build_megalith.py` | `web/megalith/dist/` (아티팩트 업로드용) |

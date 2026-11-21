@@ -324,11 +324,15 @@ class Kit:
         rng = self.rng
         u, w, h, v0 = o["u"], o["w"], o["h"], o["sill"]
         u0, u1, v1 = u - w / 2, u + w / 2, v0 + h
-        depth = 0.24 if stone else 0.17
+        depth = o.get("depth", 0.24 if stone else 0.17)
         arch = o.get("arch")
         if arch == "lancet" or arch == "round":
             self._arched_window(Mw, o, depth, scol)
             return
+        if o.get("inside"):     # seen from a room: leading on the inner face and an inner sill (the glass faces outward only)
+            gy_ = depth * 0.62
+            self.lattice(Mw, u0 + 0.065, u1 - 0.065, v0 + 0.065, v1 - 0.065, gy_ + 0.02, inward=True)
+            box(self.acc, "wood", Mw @ T(u, depth + 0.04, v0 - 0.03), w / 2 + 0.06, 0.07, 0.03, self.J(WOOD_GREY, 0.05), 0.008)
         self.reveals(Mw, u0, u1, v0, v1, depth, wallmat if not stone else "stone", wallcol if not stone else scol)
         gy = depth * 0.62
         fw = 0.065
@@ -367,7 +371,7 @@ class Kit:
         if o.get("flowers"):
             self.flower_box(Mw, u, w, v0, o.get("box_col", WOOD))
 
-    def lattice(self, Mw, a, b, c, d, y, step=0.105, wid=0.011):
+    def lattice(self, Mw, a, b, c, d, y, step=0.105, wid=0.011, inward=False):
         """Diagonal leading of the panes, as thin flat strips."""
         w, h = b - a, d - c
         for sgn in (1, -1):
@@ -397,7 +401,7 @@ class Kit:
                 nrm = np.array([-dvec[1], dvec[0]]) * wid / 2
                 q = [(p0[0] - nrm[0], y, p0[1] - nrm[1]), (p1[0] - nrm[0], y, p1[1] - nrm[1]), (p1[0] + nrm[0], y, p1[1] + nrm[1]), (p0[0] + nrm[0], y, p0[1] + nrm[1])]
                 n = np.cross(np.subtract(q[1], q[0]), np.subtract(q[2], q[0]))
-                if n[1] > 0:
+                if (n[1] > 0) != inward:
                     q = q[::-1]
                 quad(self.acc, "iron", Mw, q, IRON)
 
@@ -473,6 +477,9 @@ class Kit:
         Mg = Mw @ frame((0, depth * 0.62, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1))
         prism(self.acc, "glass", Mg, poly, 0.01, self.J(GLASS, 0.1), cap_back=False)
         self.lattice(Mw, u - r, u + r, v0, top, depth * 0.62 - 0.012)
+        if o.get("inside"):   # leading seen from the room, clipped to the opening's straight part
+            self.lattice(Mw, u - r + 0.02, u + r - 0.02, v0 + 0.02, v0 + h, depth * 0.62 + 0.02, inward=True)
+            box(self.acc, "stone", Mw @ T(u, depth + 0.05, v0 - 0.04), r + 0.08, 0.08, 0.04, np.clip(self.J(scol, 0.05) * 1.04, 0, 1), 0.01)
         # voussoirs round the head, keystone proud
         n = 9
         for k in range(n):
@@ -498,9 +505,10 @@ class Kit:
         rng = self.rng
         u, w, h = o["u"], o["w"], o["h"]
         u0, u1 = u - w / 2, u + w / 2
-        depth = 0.26 if stone else 0.18
+        depth = o.get("depth", 0.26 if stone else 0.18)
         arch = o.get("arch")
         dcol = self.J(o.get("col", WOOD), 0.05)
+        Mw_frame = Mw
         if arch:
             r = w / 2
             pts = [(u + r * math.cos(t), h + r * math.sin(t)) for t in np.linspace(0, math.pi, 15)]
@@ -548,6 +556,11 @@ class Kit:
         else:
             leaves = [(u0, u1, -1)]
         for a, b, hs in leaves:
+            if o.get("open"):     # swung inward about its hinge
+                hx_ = a if hs < 0 else b
+                ang = math.radians(o["open"]) * (1 if hs < 0 else -1)
+                Mw = Mw_frame @ T(hx_, depth - 0.04, 0) @ R("z", ang) @ T(-hx_, -(depth - 0.04), 0)
+                dy = depth - 0.07
             n = max(3, int(round((b - a) / 0.15)))
             pw = (b - a) / n
             for k in range(n):
@@ -566,13 +579,16 @@ class Kit:
             for zz in np.arange(0.25, h - 0.2, 0.34):
                 for xx in np.linspace(a + 0.08, b - 0.08, max(2, int((b - a) / 0.22))):
                     box(self.acc, "iron", Mw @ T(xx, dy - 0.034, zz), 0.009, 0.005, 0.009, IRON, 0.003)
-        hu = u1 - 0.14 if not o.get("double") else u + 0.09
-        a = np.linspace(0, 2 * math.pi, 13)
-        tube(self.acc, "iron", Mw, [(hu + 0.06 * math.sin(t), dy - 0.05, 1.0 - 0.06 * math.cos(t)) for t in a], 0.008, 5, IRON, cap=False)
-        box(self.acc, "iron", Mw @ T(hu, dy - 0.035, 1.05), 0.03, 0.006, 0.045, IRON, 0.004)
-        # threshold and step
-        box(self.acc, "stone", Mw @ T(u, -0.12, -0.06), w / 2 + 0.18, 0.2 + depth * 0.4, 0.08, self.J(STONE_GREY, 0.05), 0.02)
-        if o.get("step", True):
+        if not o.get("open"):
+            hu = u1 - 0.14 if not o.get("double") else u + 0.09
+            a = np.linspace(0, 2 * math.pi, 13)
+            tube(self.acc, "iron", Mw, [(hu + 0.06 * math.sin(t), dy - 0.05, 1.0 - 0.06 * math.cos(t)) for t in a], 0.008, 5, IRON, cap=False)
+            box(self.acc, "iron", Mw @ T(hu, dy - 0.035, 1.05), 0.03, 0.006, 0.045, IRON, 0.004)
+        Mw = Mw_frame
+        # threshold (right through an open doorway) and step
+        box(self.acc, "stone", Mw @ T(u, -0.12 + (depth * 0.5 if o.get("open") else 0), -0.06), w / 2 + 0.18, 0.2 + depth * (0.55 if o.get("open") else 0.4), 0.08,
+            self.J(STONE_GREY, 0.05), 0.02)
+        if o.get("step", True) and not o.get("open"):
             box(self.acc, "stone", Mw @ T(u, -0.42, -0.14), w / 2 + 0.3, 0.2, 0.09, self.J(STONE_GREY, 0.06), 0.025)
 
     # ------------------------------------------------------------ jetty

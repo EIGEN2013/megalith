@@ -519,7 +519,7 @@ def blob(acc, mat, M, r, col, seg=6, rings=4, squash=1.0, rng=None, rough=0.15):
 
 
 # ---------------------------------------------------------------- ambient occlusion baked into vertex colours
-def bake_ao(acc, voxel=0.12, ground=None, strength=0.75, extra=None, grid=None):
+def bake_ao(acc, voxel=0.12, ground=None, strength=0.75, extra=None, grid=None, reach=(0.14, 0.28, 0.5, 0.8, 1.25, 1.9)):
     """Hemisphere occlusion against a voxelised copy of everything in `acc` (plus extra points and the ground)."""
     grid = grid or occupancy(acc, extra, voxel)
     for mh in acc.m.values():
@@ -527,7 +527,7 @@ def bake_ao(acc, voxel=0.12, ground=None, strength=0.75, extra=None, grid=None):
         if arr is None:
             continue
         Pm, Nm, Cm, Im = arr
-        ao = ao_at(grid, Pm, Nm, ground=ground)
+        ao = ao_at(grid, Pm, Nm, ground=ground, reach=reach)
         f = (1 - strength) + strength * ao
         mh.P, mh.N, mh.C, mh.I = [Pm], [Nm], [Cm * f[:, None]], [Im]
         mh.n = len(Pm)

@@ -144,8 +144,11 @@
             '          + pow(texture2D(uTriDY, tP.xz * uTriSY).rgb, vec3(2.2)) * tW.y / uTriMeanY',
             '          + pow(texture2D(uTriD, tP.xy * uTriS).rgb, vec3(2.2)) * tW.z / uTriMean;',
             'diffuseColor.rgb *= mix(vec3(1.0), tAlb, uTriAmt);',
-            material.userData.clipR ? ('if (length(vTriP.xz - vec2(0.0, 3.0)) > ' + material.userData.clipR.toFixed(1) +
-              ' - 2.5 * fract(sin(dot(floor(vTriP.xz * 3.0), vec2(12.9898, 78.233))) * 43758.5453)) discard;') : ''].join('\n'))
+            // the old village ground dissolves into the scanned land over a wide, irregular band, in fine grain
+            material.userData.clipR ? ['{ vec2 cq = vTriP.xz - vec2(0.0, 3.0);',
+              '  float grain = fract(sin(dot(floor(vTriP.xz * 12.0), vec2(12.9898, 78.233))) * 43758.5453);',
+              '  float swell = 0.5 + 0.25 * sin(vTriP.x * 0.21 + sin(vTriP.z * 0.17) * 2.0) + 0.25 * sin(vTriP.z * 0.33 - vTriP.x * 0.12);',
+              '  if (length(cq) > ' + material.userData.clipR.toFixed(1) + ' - 6.0 * (0.55 * swell + 0.45 * grain)) discard; }'].join('\n') : ''].join('\n'))
           .replace('#include <normal_fragment_maps>', [
             '#include <normal_fragment_maps>',
             '{',
@@ -264,7 +267,7 @@
   window.addEventListener('keyup', function (e) { var action = KEYMAP[e.code]; if (action) keys[action] = false; });
   window.addEventListener('blur', function () { keys = Object.create(null); });
 
-  var cam = { yaw: 0, pitch: 0.42, distance: 3.4, goal: 3.4 };
+  var cam = { yaw: 0, pitch: 0.42, distance: 3.4, goal: 3.4, indoor: 0 };
   var drag = null;
   canvas.addEventListener('pointerdown', function (e) {
     canvas.focus();
@@ -294,7 +297,7 @@
     cam.goal = Math.max(2.5, Math.min(10, cam.goal + (e.deltaY > 0 ? 0.6 : -0.6)));
   }, { passive: false });
 
-  var stickVec = { x: 0, y: 0 }, runLatch = false;
+  var stickVec = { x: 0, y: 0 };
   var stick = $('stick'), knob = $('knob');
   function showTouch() { document.body.classList.add('touching'); }
   window.addEventListener('touchstart', showTouch, { passive: true });
@@ -314,11 +317,6 @@
   stick.addEventListener('pointercancel', stickEnd);
   $('btn-jump').addEventListener('pointerdown', function (e) { e.preventDefault(); pressed.jump = true; });
   $('btn-attack').addEventListener('pointerdown', function (e) { e.preventDefault(); pressed.attack = true; });
-  $('btn-run').addEventListener('click', function () {
-    runLatch = !runLatch;
-    this.classList.toggle('on', runLatch);
-    this.setAttribute('aria-pressed', String(runLatch));
-  });
   function onActivate(el, fn) {
     el.addEventListener('click', fn);
     el.addEventListener('keydown', function (e) { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); e.stopPropagation(); fn(); } });
@@ -717,8 +715,7 @@
       dirX = rx * ix + fwx * iy; dirZ = rz * ix + fwz * iy;
       var dl = Math.hypot(dirX, dirZ); dirX /= dl; dirZ /= dl;
     }
-    var running = keys.run || runLatch || Math.hypot(stickVec.x, stickVec.y) > 0.92;
-    var speed = running ? RUN_SPEED : WALK_SPEED;
+    var speed = RUN_SPEED;          // Robin always runs: there is no walking pace to hold a key for
     if (hero.attacking && hero.onFloor) speed = 0;
     var accel = (hero.onFloor ? ACCEL : AIR_ACCEL) * dt;
     v.x = approach(v.x, dirX * speed, accel);
@@ -833,8 +830,14 @@
     want.set(hero.pos.x, hero.pos.y + (lying ? 0.45 : 1.3), hero.pos.z);
     focus.lerp(want, Math.min(1, (lying ? 3 : 8) * dt));
     var cp = Math.cos(cam.pitch);
-    var cx = focus.x + Math.sin(cam.yaw) * cp * cam.distance, cz = focus.z + Math.cos(cam.yaw) * cp * cam.distance;
-    camera.position.set(cx, Math.max(groundAt(cx, cz) + 0.35, focus.y + Math.sin(cam.pitch) * cam.distance), cz);
+    // indoors the camera comes in close (and eases back out at the door)
+    var inside = zone === 'village' && roomAt(hero.pos.x, hero.pos.y + 0.5, hero.pos.z, -0.05);
+    cam.indoor += ((inside ? 1 : 0) - (cam.indoor || 0)) * Math.min(1, 4 * dt);
+    var dist = cam.distance + (Math.min(cam.distance, 3.0) - cam.distance) * (cam.indoor || 0);
+    var cx = focus.x + Math.sin(cam.yaw) * cp * dist, cz = focus.z + Math.cos(cam.yaw) * cp * dist;
+    camera.position.set(cx, Math.max(groundAt(cx, cz) + 0.35, focus.y + Math.sin(cam.pitch) * dist), cz);
+    clampCameraToRoom();
+    updateRooms();
     camera.lookAt(focus);
     if (doorFx.shake && zone === 'forest') { camera.position.x += (Math.random() - 0.5) * doorFx.shake; camera.position.y += (Math.random() - 0.5) * doorFx.shake; }
     sky.position.copy(camera.position);
@@ -994,6 +997,57 @@
     V.boxes = V.boxes.concat(boxesOf(xd.colliders));
     V.wall = xd.wall;
     V.gates = xd.gates;
+    // rooms you can walk into: their bounds (for the camera) and their lamps (fire and candlelight)
+    V.rooms = (xd.interiors || []).map(function (r) {
+      var room = { name: r.name, id: r.id, x: r.x, z: r.z, cos: Math.cos(r.yaw), sin: Math.sin(r.yaw), hx: r.hx, hz: r.hz, floor: r.floor, ceil: r.ceil, lights: [] };
+      r.lights.forEach(function (l, i) {
+        var pl = new THREE.PointLight(srgb(new THREE.Color(l.color[0], l.color[1], l.color[2]).getHex()), 0, l.distance, 2);
+        pl.position.set(l.x, l.y, l.z);
+        group.add(pl);
+        room.lights.push({ light: pl, base: l.intensity, seed: i * 1.7 + r.x });
+      });
+      return room;
+    });
+  }
+  function roomAt(x, y, z, margin) {
+    var rooms = VILLAGE && VILLAGE.rooms;
+    if (!rooms) return null;
+    for (var i = 0; i < rooms.length; i++) {
+      var r = rooms[i], l = toLocal(r, x, z);
+      if (Math.abs(l[0]) < r.hx + margin && Math.abs(l[1]) < r.hz + margin && y > r.floor - 0.6 && y < r.ceil) return r;
+    }
+    return null;
+  }
+  function roomFloorAt(x, z, margin) {
+    var rooms = VILLAGE && VILLAGE.rooms;
+    if (!rooms) return false;
+    for (var i = 0; i < rooms.length; i++) {
+      var r = rooms[i], l = toLocal(r, x, z);
+      if (Math.abs(l[0]) < r.hx + margin && Math.abs(l[1]) < r.hz + margin) return true;
+    }
+    return false;
+  }
+  function updateRooms() {
+    // lamps flicker, and only burn while Robin is near enough to see them (lights far off cost for nothing)
+    if (zone !== 'village' || !VILLAGE || !VILLAGE.rooms) return;
+    VILLAGE.rooms.forEach(function (r) {
+      var near = Math.hypot(hero.pos.x - r.x, hero.pos.z - r.z) < 40;
+      r.lights.forEach(function (L) {
+        var f = 0.86 + 0.09 * Math.sin(clockNow * 11.3 + L.seed) + 0.05 * Math.sin(clockNow * 27.1 + L.seed * 2.3);
+        L.light.intensity = near ? L.base * f : 0;
+      });
+    });
+  }
+  function clampCameraToRoom() {
+    // indoors the camera stays inside the walls and under the ceiling
+    if (zone !== 'village') return;
+    var r = roomAt(hero.pos.x, hero.pos.y + 0.5, hero.pos.z, -0.05);
+    if (!r) return;
+    var l = toLocal(r, camera.position.x, camera.position.z);
+    var lx = Math.max(-r.hx + 0.3, Math.min(r.hx - 0.3, l[0])), lz = Math.max(-r.hz + 0.3, Math.min(r.hz - 0.3, l[1]));
+    camera.position.x = r.x + lx * r.cos + lz * r.sin;
+    camera.position.z = r.z - lx * r.sin + lz * r.cos;
+    camera.position.y = Math.max(r.floor + 0.5, Math.min(r.ceil - 0.25, camera.position.y));
   }
   function buildVillage(gltf, inst, data, ext, extData) {
     var group = gltf.scene, protos = {}, drop = [];
@@ -1018,7 +1072,7 @@
       o.castShadow = !big && mn !== 'glass';
       o.receiveShadow = true;
       if (/^castle_/.test(o.name)) { o.visible = false; return; }        // the first castle and its rock island: replaced by the castle out at sea
-      if (/^terrain/.test(o.name)) { o.material = o.material.clone(); o.material.userData = { clipR: 33 }; o.material.color.setRGB(0.8, 0.78, 0.72); }   // the land takes over beyond; toned to sit with its scanned meadow
+      if (/^terrain/.test(o.name)) { o.material = o.material.clone(); o.material.userData = { clipR: 27 }; o.material.color.setRGB(0.66, 0.62, 0.64); }   // the land takes over beyond; toned to sit with its scanned meadow
       if (mn !== 'glass') detailFor(o.material, /^castle/.test(o.name) ? { stone: ['ashlar'] } : null);
     });
     drop.forEach(function (o) { o.parent.remove(o); });
@@ -1027,7 +1081,7 @@
       var pm = protos[gi.mesh];
       if (!pm) return;
       var geo = bakedGeometry(pm), mat = pm.material;
-      if (gi.set === 'grass') { mat = mat.clone(); mat.userData = {}; }
+      if (gi.set === 'grass') { mat = mat.clone(); mat.userData = {}; mat.color.setRGB(0.62, 0.6, 0.55); }   // toned to the scanned meadow round it
       mat.vertexColors = true; mat.metalness = 0;
       if (gi.set === 'grass') mat.side = THREE.DoubleSide;
       else detailFor(mat);
@@ -1524,7 +1578,8 @@
         var x = (gx + h1) * step, z = (gz + h2) * step;
         var dd = (x - px) * (x - px) + (z - pz) * (z - pz);
         if (dd > R * R) continue;
-        if (!G.weight && Math.hypot(x, z - 3) < 33) continue;
+        if (!G.weight && Math.hypot(x, z - 3) < 23) continue;
+        if (!G.weight && roomFloorAt(x, z, 0.7)) continue;        // no grass through the floor of a room
         var meadow, y;
         if (G.weight) { meadow = G.weight(x, z); y = G.ground(x, z); }
         else { var w = splatAt(G, x, z); meadow = w[0] + w[1] * 0.35; y = LAND.groundAt(x, z); }
@@ -1586,7 +1641,7 @@
     var meta = window.MEGALITH_GROUND || {};
     var gm = groundMaterial(splat, meta, data.water);
     var nearGeo = gridGeometry(data.near, near, function (x0, z0, x1, z1) {
-      return Math.hypot((x0 + x1) / 2, (z0 + z1) / 2 - 3) > 30;
+      return Math.hypot((x0 + x1) / 2, (z0 + z1) / 2 - 3) > 20;      // under the old ground's dissolving edge too
     });
     var nearMesh = new THREE.Mesh(nearGeo, gm);
     nearMesh.receiveShadow = true; nearMesh.name = 'land_near';
@@ -2811,7 +2866,9 @@
   function updateArea() {
     if (!started || hero.cutscene || (AREA_TICK++ % 10)) return;
     var x = hero.pos.x, z = hero.pos.z, name, sub;
+    var inRoom = zone === 'village' ? roomAt(x, hero.pos.y + 0.5, z, -0.05) : null;
     if (zone === 'forest') { name = '메갈리스 유적'; sub = '잊힌 왕국의 돌 고리'; }
+    else if (inRoom) { name = inRoom.name; sub = '엘렌하르 마을'; }
     else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 30) {
       var k = LAND.castle.keep, kx = LAND.castle.x + k.x, kz = LAND.castle.z + k.z;
       if (Math.abs(x - kx) < k.w / 2 && Math.abs(z - kz) < k.d / 2 && hero.pos.y > LAND.castle.y + 0.8) { name = '왕좌의 대전'; sub = '엘렌하르 성'; reachThrone(); }
