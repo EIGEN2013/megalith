@@ -729,7 +729,7 @@
       else if (pressed.jump) {
         if (hero.onFloor) { hero.jumpsUsed = 1; v.y = JUMP_VELOCITY; hero.onFloor = false; hero.attacking = false; replay('Jump', 0.08); }
         else if (hero.jumpsUsed < MAX_JUMPS) { hero.jumpsUsed = MAX_JUMPS; v.y = DOUBLE_JUMP_VELOCITY; hero.flipping = true; replay('DoubleJump', 0.05); }
-      } else if (pressed.attack && hero.onFloor && !hero.attacking) { hero.attacking = true; replay('Attack', BLEND, ATTACK_SPEED); }
+      } else if (pressed.attack && hero.onFloor && !hero.attacking) { hero.attacking = true; replay('Attack', BLEND, ATTACK_SPEED); COMBAT.strike = 0.24; }
     }
     pressed.jump = pressed.attack = pressed.interact = false;
 
@@ -844,6 +844,7 @@
     updateLand();
     updateMonsters(dt);
     updateMusic(dt);
+    updateArea();
   }
 
   // ---------------------------------------------------------------- music by place
@@ -1666,7 +1667,7 @@
   function enterLand() {
     if (!LAND.ready) return;
     LAND.group.visible = true;
-    if (VILLAGE) { VILLAGE.bounds = { x: 0, z: 0, r: 250 }; BOXES = VILLAGE.boxes.concat(LAND.boxes || []); }
+    if (VILLAGE) { VILLAGE.bounds = { x: 0, z: 0, r: 355 }; BOXES = VILLAGE.boxes.concat(LAND.boxes || []); }
     landLights();
     if (LAND.envTex) scene.environment = LAND.envTex;
   }
@@ -1690,6 +1691,7 @@
       return { x: o0[0] + c.x, z: o0[2] + c.z, yaw: -c.yaw, hx: c.hx, hz: c.hz, y0: o0[1] + c.y0, y1: o0[1] + c.y1 };
     })));
     // warm light from the hall's fire and candles
+    LAND.castle = { x: o0[0], y: o0[1], z: o0[2], keep: info.keep };
     var k = info.keep, hall = new THREE.PointLight(srgb(0xffa45a), 2.4, 20, 2);
     hall.position.set(o0[0] + k.x + 6.5, o0[1] + k.floor + 2.2, o0[2] + k.z);
     LAND.group.add(hall);
@@ -1705,7 +1707,7 @@
     horror: [[-82, 44], [-118, 86], [-64, 132], [26, 150], [-170, 14], [-150, 150], [-40, 205]],
     golem: [[-128, -58], [-196, 118], [64, 196], [-205, -40]]
   };
-  function spawnMonsters(kind, gltf) {
+  function spawnMonstersOld(kind, gltf) {
     MONSTER_SPOTS[kind].forEach(function (s, i) {
       var root = gltf.scene.clone(true), parts = {};
       root.traverse(function (o) {
@@ -1728,7 +1730,7 @@
     _e.set(rx || 0, ry || 0, rz || 0);
     p.node.quaternion.copy(p.rest).multiply(_q.setFromEuler(_e));
   }
-  function updateMonsters(dt) {
+  function updateMonstersOld(dt) {
     if (!LAND.ready || zone !== 'village' || !MONSTERS.length) return;
     for (var i = 0; i < MONSTERS.length; i++) {
       var m = MONSTERS[i], r = m.root;
@@ -1782,6 +1784,337 @@
       if (dh < m.radius + RADIUS && dh > 1e-4) { hero.pos.x = r.position.x + dxh / dh * (m.radius + RADIUS); hero.pos.z = r.position.z + dzh / dh * (m.radius + RADIUS); }
     }
   }
+  // ---------------------------------------------------------------- monsters: roaming, hunting, fighting
+  // Each monster roams the whole land (its home drifts from walk to walk), notices Robin within 16 m,
+  // hunts him down, winds up and strikes. Robin's blows flash and stagger it, knock it back and can tear
+  // off a limb, which falls under physics (gravity, bounce, tumble); a killed monster bursts apart.
+  // Three kills open the bridge to the castle.
+  var COMBAT = { strike: 0, kills: 0, need: 3, debris: [], sparks: [], shake: 0, gateMsgAt: -99, hurtFx: 0 };
+  var KIND = {
+    horror: { hp: 60, walk: 1.25, run: 3.6, reach: 1.9, dmg: 9, windup: 0.42, cool: 1.5, radius: 0.9, blood: 0x4a0c0c,
+              limbs: ['hand_l', 'hand_r', 'fore_l', 'fore_r', 'fin_l', 'fin_r', 'tent_0_3', 'tent_1_2', 'tent_2_3', 'tent_3_2', 'tent_4_3', 'tent_5_2', 'tent_0_1', 'tent_3_1', 'head'] },
+    golem: { hp: 120, walk: 0.95, run: 2.3, reach: 2.5, dmg: 15, windup: 0.6, cool: 2.0, radius: 1.25, blood: 0x8a8f96,
+             limbs: ['hand_l', 'hand_r', 'fore_l', 'fore_r', 'arm_l', 'arm_r', 'head'] }
+  };
+  function landOk(x, z) {
+    if (!LAND.ready || Math.abs(x) > 245 || Math.abs(z) > 245) return false;
+    if (LAND.groundAt(x, z) < LAND.water + 0.5) return false;
+    if (Math.hypot(x, z - 3) < 44) return false;                                      // not inside the village
+    if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 75) return false;
+    return true;
+  }
+  function spawnMonsters(kind, gltf) {
+    var count = kind === 'horror' ? 16 : 9, seed = kind === 'horror' ? 7 : 19, made = 0, tries = 0;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    while (made < count && tries++ < 600) {
+      var x = rnd() * 460 - 230, z = rnd() * 460 - 230;
+      if (!landOk(x, z)) continue;
+      var root = gltf.scene.clone(true), parts = {};
+      root.traverse(function (o) {
+        if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material = o.material.clone(); }   // own materials: hit flashes
+        parts[o.name] = { node: o, rest: o.quaternion.clone(), pos: o.position.clone() };
+      });
+      root.position.set(x, LAND.groundAt(x, z), z);
+      LAND.group.add(root);
+      var K = KIND[kind];
+      MONSTERS.push({ kind: kind, K: K, root: root, parts: parts, hp: K.hp, state: 'roam', home: new THREE.Vector2(x, z), heading: rnd() * 6.28,
+                      target: null, wait: rnd() * 3, phase: rnd() * 6.28, t: rnd() * 10, timer: 0, cool: 0, flash: 0, knock: new THREE.Vector2(),
+                      severed: {}, radius: K.radius });
+      made++;
+    }
+  }
+  var _hitV = new THREE.Vector3(), _wp = new THREE.Vector3(), _wq = new THREE.Quaternion(), _ws = new THREE.Vector3();
+  function burst(pos, colour, n, speed) {
+    var g = new THREE.BufferGeometry(), p = new Float32Array(n * 3), vel = [];
+    for (var i = 0; i < n; i++) {
+      p[i * 3] = pos.x; p[i * 3 + 1] = pos.y; p[i * 3 + 2] = pos.z;
+      vel.push(new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.9 + 1, (Math.random() - 0.5) * speed));
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    var m = new THREE.PointsMaterial({ color: colour, size: 0.09, transparent: true, opacity: 1, depthWrite: false });
+    var pts = new THREE.Points(g, m);
+    pts.frustumCulled = false;
+    scene.add(pts);
+    COMBAT.sparks.push({ pts: pts, vel: vel, life: 1.1 });
+  }
+  function sever(m, name, impulse) {
+    var p = m.parts[name];
+    if (!p || m.severed[name] || !p.node.parent) return false;
+    var node = p.node;
+    node.updateWorldMatrix(true, true);
+    node.matrixWorld.decompose(_wp, _wq, _ws);
+    node.parent.remove(node);
+    node.position.copy(_wp); node.quaternion.copy(_wq); node.scale.copy(_ws);
+    LAND.group.add(node);
+    node.traverse(function (o) { m.severed[o.name] = true; o.matrixAutoUpdate = true; });
+    var dir = impulse.clone();
+    COMBAT.debris.push({ obj: node, vel: new THREE.Vector3(dir.x * 3.5 + (Math.random() - 0.5) * 2, 3 + Math.random() * 3, dir.z * 3.5 + (Math.random() - 0.5) * 2),
+                         spin: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10), life: 9, rest: false });
+    burst(_wp, m.K.blood, m.kind === 'golem' ? 26 : 34, 4);
+    return true;
+  }
+  function heroStrike() {
+    var fx = Math.sin(hero.heading), fz = Math.cos(hero.heading), any = false;
+    for (var i = 0; i < MONSTERS.length; i++) {
+      var m = MONSTERS[i];
+      if (m.state === 'dead') continue;
+      var dx = m.root.position.x - hero.pos.x, dz = m.root.position.z - hero.pos.z, d = Math.hypot(dx, dz);
+      if (d > 2.0 + m.radius || (dx * fx + dz * fz) / Math.max(d, 1e-3) < 0.15) continue;
+      any = true;
+      var dmg = 20 + Math.random() * 8;
+      m.hp -= dmg;
+      m.flash = 0.18; m.state = m.hp > 0 ? 'hurt' : 'dead'; m.timer = 0.35;
+      m.knock.set(dx / d * 5.5, dz / d * 5.5);
+      _hitV.set(dx / d, 0, dz / d);
+      _wp.copy(m.root.position); _wp.y += m.kind === 'golem' ? 1.6 : 1.0;
+      burst(_wp, m.K.blood, 16, 3);
+      if (m.hp > 0) {
+        if (Math.random() < (m.kind === 'golem' ? 0.45 : 0.6)) {                 // tear off a limb
+          var pool = m.K.limbs.filter(function (n) { return n !== 'head' && !m.severed[n]; });
+          if (pool.length) sever(m, pool[Math.floor(Math.random() * pool.length)], _hitV);
+        }
+      } else {
+        // it bursts apart: every limb flies, the body slumps and sinks
+        m.K.limbs.concat(m.kind === 'golem' ? ['torso', 'thigh_l', 'thigh_r'] : ['tent_0_0', 'tent_1_0', 'tent_2_0', 'tent_3_0', 'tent_4_0', 'tent_5_0']).forEach(function (n) {
+          var a = Math.random() * 6.28;
+          sever(m, n, new THREE.Vector3(Math.cos(a) * 0.8 + _hitV.x, 0, Math.sin(a) * 0.8 + _hitV.z));
+        });
+        m.timer = 0;
+        COMBAT.kills++;
+        showArea(COMBAT.kills >= COMBAT.need ? '성으로 가는 다리가 열렸다' : '몬스터 처치  ' + COMBAT.kills + ' / ' + COMBAT.need,
+                 COMBAT.kills >= COMBAT.need ? '서쪽 해안길 끝, 바다 위의 성으로' : (m.kind === 'golem' ? '얼음 골렘' : '촉수 괴물'), true);
+      }
+    }
+    if (any) COMBAT.shake = 0.18;
+  }
+  function hurtHero(m) {
+    if (hero.hp <= 0) return;
+    hero.hp = Math.max(0, hero.hp - m.K.dmg);
+    var dx = hero.pos.x - m.root.position.x, dz = hero.pos.z - m.root.position.z, d = Math.max(0.01, Math.hypot(dx, dz));
+    hero.vel.x += dx / d * 7; hero.vel.z += dz / d * 7; hero.vel.y = Math.max(hero.vel.y, 3); hero.onFloor = false;
+    COMBAT.shake = 0.3; COMBAT.hurtFx = 1;
+    updateHud();
+    if (hero.hp <= 0) {
+      showArea('쓰러졌다', '엘렌하르 마을에서 다시 눈을 뜬다', true);
+      setTimeout(function () {
+        var s = VILLAGE.data.spawn;
+        hero.pos.set(s.x, groundAt(s.x, s.z), s.z); hero.vel.set(0, 0, 0); hero.hp = 100; updateHud();
+      }, 1600);
+    }
+  }
+  function updateMonsters(dt) {
+    if (!LAND.ready || zone !== 'village') return;
+    hero.pos.x = Math.max(-250, Math.min(250, hero.pos.x)); hero.pos.z = Math.max(-250, Math.min(250, hero.pos.z));   // the mapped square
+    if (COMBAT.strike > 0 && (COMBAT.strike -= dt) <= 0) heroStrike();
+    for (var i = 0; i < MONSTERS.length; i++) {
+      var m = MONSTERS[i], r = m.root, K = m.K;
+      m.t += dt;
+      if (m.state === 'dead') {                       // the remains settle into the ground
+        m.timer += dt;
+        if (m.timer > 2.5) r.position.y -= dt * 0.25;
+        if (m.timer > 9) { r.parent && r.parent.remove(r); MONSTERS.splice(i--, 1); }
+        continue;
+      }
+      var dxh = hero.pos.x - r.position.x, dzh = hero.pos.z - r.position.z, dh = Math.hypot(dxh, dzh);
+      var moving = 0, toward = Math.atan2(dxh, dzh);
+      if (m.flash > 0) {
+        m.flash -= dt;
+        var f = Math.max(0, m.flash) / 0.18;
+        r.traverse(function (o) { if (o.isMesh) o.material.color.setRGB(1 + f * 2.2, 1 + f * 0.35, 1 + f * 0.3); });
+      }
+      if (m.knock.lengthSq() > 0.01) {
+        r.position.x += m.knock.x * dt; r.position.z += m.knock.y * dt;
+        m.knock.multiplyScalar(Math.max(0, 1 - 6 * dt));
+      }
+      if (m.cool > 0) m.cool -= dt;
+      if (m.state === 'hurt') {
+        if ((m.timer -= dt) <= 0) m.state = 'chase';
+      } else if (m.state === 'attack') {
+        m.timer += dt;
+        m.heading += Math.atan2(Math.sin(toward - m.heading), Math.cos(toward - m.heading)) * Math.min(1, 3 * dt);
+        if (m.timer >= K.windup && !m.struck) {
+          m.struck = true;
+          if (dh < K.reach + 0.6 && hero.hp > 0) hurtHero(m);
+        }
+        if (m.timer >= K.windup + 0.45) { m.state = 'chase'; m.cool = K.cool; }
+      } else if (dh < 16 && hero.hp > 0 && zone === 'village' && Math.hypot(hero.pos.x, hero.pos.z - 3) > 36) {
+        m.state = 'chase';                            // hunting Robin
+        m.heading += Math.atan2(Math.sin(toward - m.heading), Math.cos(toward - m.heading)) * Math.min(1, 4 * dt);
+        if (dh > K.reach) {
+          var sp = K.run * (m.kind === 'horror' ? (0.8 + 0.2 * Math.sin(m.t * 3)) : 1);
+          r.position.x += Math.sin(m.heading) * sp * dt; r.position.z += Math.cos(m.heading) * sp * dt;
+          moving = 2;
+        } else if (m.cool <= 0) { m.state = 'attack'; m.timer = 0; m.struck = false; }
+      } else {
+        m.state = 'roam';                             // wandering: the home drifts so the creatures range over the land
+        if (m.wait > 0) m.wait -= dt;
+        else {
+          if (!m.target) {
+            if (Math.random() < 0.35) {
+              var a0 = Math.random() * 6.28, hx = m.home.x + Math.cos(a0) * 35, hz = m.home.y + Math.sin(a0) * 35;
+              if (landOk(hx, hz)) m.home.set(hx, hz);
+            }
+            var a = Math.random() * 6.28, d = 6 + Math.random() * 18;
+            m.target = new THREE.Vector2(m.home.x + Math.cos(a) * d, m.home.y + Math.sin(a) * d);
+          }
+          var tx = m.target.x - r.position.x, tz = m.target.y - r.position.z, td = Math.hypot(tx, tz);
+          if (td < 0.8 || !landOk(m.target.x, m.target.y)) { m.target = null; m.wait = 1 + Math.random() * 4; }
+          else {
+            var want = Math.atan2(tx, tz), diff = Math.atan2(Math.sin(want - m.heading), Math.cos(want - m.heading));
+            m.heading += diff * Math.min(1, 2 * dt);
+            if (Math.abs(diff) < 0.7) { r.position.x += Math.sin(m.heading) * K.walk * dt; r.position.z += Math.cos(m.heading) * K.walk * dt; moving = 1; }
+          }
+        }
+      }
+      // keep out of the village and the sea
+      var vd = Math.hypot(r.position.x, r.position.z - 3);
+      if (vd < 40) { r.position.x *= 40 / vd; r.position.z = 3 + (r.position.z - 3) * 40 / vd; }
+      r.position.y = LAND.groundAt(r.position.x, r.position.z);
+      r.rotation.y = m.heading;
+      animateMonster(m, moving, dt, dh);
+      if (dh < m.radius + RADIUS && dh > 1e-4) { hero.pos.x = r.position.x + dxh / dh * (m.radius + RADIUS); hero.pos.z = r.position.z + dzh / dh * (m.radius + RADIUS); }
+    }
+    updateDebris(dt);
+    // the castle stays shut until enough monsters have fallen
+    if (LAND.castle && COMBAT.kills < COMBAT.need) {
+      var cd = Math.hypot(hero.pos.x - LAND.castle.x, hero.pos.z - LAND.castle.z);
+      if (cd < 66) {
+        var k = 66 / cd;
+        hero.pos.x = LAND.castle.x + (hero.pos.x - LAND.castle.x) * k; hero.pos.z = LAND.castle.z + (hero.pos.z - LAND.castle.z) * k;
+        if (clockNow - COMBAT.gateMsgAt > 5) { COMBAT.gateMsgAt = clockNow; showArea('다리가 막혀 있다', '몬스터를 ' + COMBAT.need + '마리 쓰러뜨려야 한다  (' + COMBAT.kills + ' / ' + COMBAT.need + ')', true); }
+      }
+    }
+    if (COMBAT.shake > 0) {
+      COMBAT.shake -= dt;
+      camera.position.x += (Math.random() - 0.5) * COMBAT.shake * 0.5; camera.position.y += (Math.random() - 0.5) * COMBAT.shake * 0.5;
+    }
+    if (COMBAT.hurtFx > 0) { COMBAT.hurtFx = Math.max(0, COMBAT.hurtFx - dt * 2.2); HUD.hurt.style.opacity = COMBAT.hurtFx.toFixed(3); }
+  }
+  function animateMonster(m, moving, dt, dh) {
+    m.phase += dt * (moving === 2 ? (m.kind === 'golem' ? 5.2 : 9) : moving ? (m.kind === 'golem' ? 3.2 : 5) : 1.2);
+    var ph = m.phase, w = moving ? 1 : 0.15, atk = 0;
+    if (m.state === 'attack') {                        // wind up, then strike
+      var t = m.timer / m.K.windup;
+      atk = t < 1 ? -t : Math.max(0, 1 - (m.timer - m.K.windup) / 0.45) * 1.6;
+    }
+    var hurt = m.state === 'hurt' ? Math.sin(m.timer * 20) * 0.15 : 0;
+    if (m.kind === 'golem') {
+      pose(m, 'thigh_l', Math.sin(ph) * 0.45 * w); pose(m, 'thigh_r', -Math.sin(ph) * 0.45 * w);
+      pose(m, 'shin_l', Math.max(0, -Math.cos(ph)) * 0.5 * w); pose(m, 'shin_r', Math.max(0, Math.cos(ph)) * 0.5 * w);
+      pose(m, 'arm_l', -Math.sin(ph) * 0.35 * w + atk * 1.4, 0, 0.05); pose(m, 'arm_r', Math.sin(ph) * 0.35 * w + atk * 1.4, 0, -0.05);
+      pose(m, 'fore_l', -0.25 - Math.max(0, Math.sin(ph)) * 0.2 * w + atk * 0.4); pose(m, 'fore_r', -0.25 - Math.max(0, -Math.sin(ph)) * 0.2 * w + atk * 0.4);
+      pose(m, 'torso', 0.04 + Math.sin(m.t * 1.3) * 0.025 - atk * 0.25 + hurt, Math.sin(ph) * 0.06 * w);
+      pose(m, 'head', Math.sin(m.t * 0.7) * 0.05, dh < 16 ? 0 : Math.sin(m.t * 0.4) * 0.3);
+      if (m.parts.pelvis) m.parts.pelvis.node.position.y = m.parts.pelvis.pos.y + Math.abs(Math.sin(ph)) * 0.05 * w;
+    } else {
+      for (var t2 = 0; t2 < 6; t2++) for (var k = 0; k < 5; k++) {
+        var wave = Math.sin(m.t * (moving ? 6 : 1.6) - k * 0.7 + t2 * 1.05);
+        pose(m, 'tent_' + t2 + '_' + k, wave * (0.1 + 0.05 * k) * (moving ? 1.8 : 1), 0, Math.cos(m.t * 1.1 + t2 + k * 0.5) * 0.08);
+      }
+      pose(m, 'arm_l', Math.sin(m.t * 1.7) * 0.15 - atk * 1.2, 0, Math.sin(m.t * 0.9) * 0.1); pose(m, 'arm_r', Math.sin(m.t * 1.7 + 1) * 0.15 - atk * 1.2, 0, -Math.sin(m.t * 0.9) * 0.1);
+      pose(m, 'fin_l', 0, 0, Math.sin(m.t * (moving === 2 ? 6 : 2.3)) * 0.25); pose(m, 'fin_r', 0, 0, -Math.sin(m.t * (moving === 2 ? 6 : 2.3)) * 0.25);
+      pose(m, 'head', Math.sin(m.t * 1.1) * 0.08 - atk * 0.3 + hurt, Math.sin(m.t * 0.6) * 0.2);
+      if (m.parts.body) {
+        m.parts.body.node.position.y = m.parts.body.pos.y + Math.sin(m.t * (moving ? 7 : 2)) * 0.04;
+        m.parts.body.node.position.z = m.parts.body.pos.z + Math.max(0, atk) * 0.35;
+      }
+    }
+  }
+  function updateDebris(dt) {
+    for (var i = COMBAT.debris.length - 1; i >= 0; i--) {
+      var d = COMBAT.debris[i], o = d.obj;
+      d.life -= dt;
+      if (!d.rest) {
+        d.vel.y -= 14 * dt;
+        o.position.addScaledVector(d.vel, dt);
+        o.rotation.x += d.spin.x * dt; o.rotation.y += d.spin.y * dt; o.rotation.z += d.spin.z * dt;
+        var g = LAND.groundAt(o.position.x, o.position.z) + 0.08;
+        if (o.position.y < g) {
+          o.position.y = g;
+          if (Math.abs(d.vel.y) < 1.2) { d.rest = d.vel.lengthSq() < 1; d.vel.multiplyScalar(0.5); d.vel.y = 0; }
+          else { d.vel.y *= -0.32; d.vel.x *= 0.6; d.vel.z *= 0.6; }
+          d.spin.multiplyScalar(0.55);
+        }
+      }
+      if (d.life < 2) o.position.y -= dt * 0.2;
+      if (d.life <= 0) { o.parent && o.parent.remove(o); COMBAT.debris.splice(i, 1); }
+    }
+    for (var j = COMBAT.sparks.length - 1; j >= 0; j--) {
+      var s = COMBAT.sparks[j], arr = s.pts.geometry.attributes.position.array;
+      s.life -= dt;
+      for (var n = 0; n < s.vel.length; n++) {
+        s.vel[n].y -= 12 * dt;
+        arr[n * 3] += s.vel[n].x * dt; arr[n * 3 + 1] += s.vel[n].y * dt; arr[n * 3 + 2] += s.vel[n].z * dt;
+      }
+      s.pts.geometry.attributes.position.needsUpdate = true;
+      s.pts.material.opacity = Math.max(0, s.life / 1.1);
+      if (s.life <= 0) { scene.remove(s.pts); s.pts.geometry.dispose(); s.pts.material.dispose(); COMBAT.sparks.splice(j, 1); }
+    }
+  }
+
+  // ---------------------------------------------------------------- HUD: health, area banner
+  var HUD = (function () {
+    var css = document.createElement('style');
+    css.textContent = [
+      '#hud-hp{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:96px;width:180px;padding:7px 10px 8px;pointer-events:none}',
+      '#hud-hp .lbl{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;color:var(--ink-dim);margin-bottom:5px}',
+      '#hud-hp .bar{height:6px;border-radius:3px;background:rgba(243,239,228,.12);overflow:hidden}',
+      '#hud-hp .fill{height:100%;width:100%;background:linear-gradient(90deg,#b8442f,#e0794e);transition:width .25s ease-out}',
+      '#hud-hurt{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 50%,rgba(140,0,0,0) 45%,rgba(140,0,0,.55) 100%)}',
+      '#area{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:262px;pointer-events:none;opacity:0;transform:translateY(8px);',
+      '  transition:opacity 1.1s ease,transform 1.1s ease;max-width:min(86vw,560px);padding:14px 64px 15px 20px;',
+      '  border-left:2px solid var(--ember);background:linear-gradient(90deg,rgba(11,14,12,.72) 0%,rgba(11,14,12,.45) 60%,rgba(11,14,12,0) 100%)}',
+      '#area.on{opacity:1;transform:none}',
+      '#area .name{font-family:var(--font-display);font-size:34px;font-weight:700;letter-spacing:.22em;color:var(--ink);',
+      '  text-shadow:0 2px 14px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.8)}',
+      '#area .rule{height:1px;width:0;margin:9px 0 8px;background:linear-gradient(90deg,var(--ember),rgba(243,169,95,0));transition:width 1.6s ease .25s}',
+      '#area.on .rule{width:260px}',
+      '#area .sub{font-size:14px;letter-spacing:.18em;color:var(--ink-dim);text-shadow:0 1px 8px rgba(0,0,0,.7)}',
+      '@media (max-width:560px){#area .name{font-size:25px}#area{bottom:170px}}'].join('\n');
+    document.head.appendChild(css);
+    var hp = document.createElement('div'); hp.id = 'hud-hp'; hp.className = 'panel'; hp.hidden = true;
+    hp.innerHTML = '<div class="lbl"><span>로빈</span><span id="hud-hp-n">100</span></div><div class="bar"><div class="fill" id="hud-hp-f"></div></div>';
+    var hurt = document.createElement('div'); hurt.id = 'hud-hurt';
+    var area = document.createElement('div'); area.id = 'area'; area.setAttribute('aria-live', 'polite');
+    area.innerHTML = '<div class="name"></div><div class="rule"></div><div class="sub"></div>';
+    stage.appendChild(hurt); stage.appendChild(hp); stage.appendChild(area);
+    return { hp: hp, hurt: hurt, area: area, current: '', timer: null };
+  })();
+  hero.hp = 100;
+  function updateHud() {
+    HUD.hp.hidden = zone !== 'village';
+    $('hud-hp-n').textContent = Math.ceil(hero.hp);
+    $('hud-hp-f').style.width = hero.hp + '%';
+  }
+  function showArea(name, sub, force) {
+    if (!force && HUD.current === name) return;
+    if (!force) HUD.current = name;
+    var a = HUD.area;
+    a.querySelector('.name').textContent = name;
+    a.querySelector('.sub').textContent = sub || '';
+    a.classList.remove('on'); void a.offsetWidth; a.classList.add('on');
+    clearTimeout(HUD.timer);
+    HUD.timer = setTimeout(function () { a.classList.remove('on'); }, 4200);
+  }
+  var AREA_TICK = 0;
+  function updateArea() {
+    if (!started || hero.cutscene || (AREA_TICK++ % 10)) return;
+    var x = hero.pos.x, z = hero.pos.z, name, sub;
+    if (zone === 'forest') { name = '메갈리스 유적'; sub = '잊힌 왕국의 돌 고리'; }
+    else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 30) {
+      var k = LAND.castle.keep, kx = LAND.castle.x + k.x, kz = LAND.castle.z + k.z;
+      if (Math.abs(x - kx) < k.w / 2 && Math.abs(z - kz) < k.d / 2 && hero.pos.y > LAND.castle.y + 0.8) { name = '왕좌의 대전'; sub = '엘렌하르 성'; }
+      else { name = '엘렌하르 성'; sub = '바다 위의 옛 왕성'; }
+    }
+    else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 75) { name = '해안 둑길'; sub = '성으로 이어지는 돌다리'; }
+    else if (Math.hypot(x, z - 3) < 38) { name = '엘렌하르 마을'; sub = '바다와 언덕 사이의 마을'; }
+    else if (x < -95) { name = '고분의 숲'; sub = '오래된 참나무와 전나무 숲'; }
+    else if (z > 150) { name = '남쪽 해안'; sub = '바람이 머무는 언덕 끝'; }
+    else { name = '바람언덕 들판'; sub = '엘렌하르를 둘러싼 풀밭'; }
+    showArea(name, sub);
+    updateHud();
+  }
+
   function loadCastleAndMonsters() {
     var getJson = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }); };
     var whenLand = function (fn) { (function wait() { if (LAND.ready) fn(); else setTimeout(wait, 200); })(); };
@@ -1789,7 +2122,9 @@
       whenLand(function () { buildCastle(r[0], r[1]); });
     }).catch(function (err) { console.error('castle', err); });
     Promise.all([fetchGz('horror.b64.txt').then(parseBytes), fetchGz('golem.b64.txt').then(parseBytes)]).then(function (r) {
-      whenLand(function () { spawnMonsters('horror', r[0]); spawnMonsters('golem', r[1]); });
+      (function wait() {          // after the land and the castle, so they keep off its island
+        if (LAND.ready && LAND.castle) { spawnMonsters('horror', r[0]); spawnMonsters('golem', r[1]); } else setTimeout(wait, 250);
+      })();
     }).catch(function (err) { console.error('monsters', err); });
   }
   function loadLand() {
@@ -1909,7 +2244,7 @@
                         groundAt: groundAt, flags: flags, render: function () { renderer.render(scene, camera); },
                         summon: function () { foundCount = 3; found[0] = found[1] = found[2] = true; finished = true; summon(); },
                         village: function () { return VILLAGE; }, allFound: function () { foundCount = 3; found[0] = found[1] = found[2] = true; }, zone: function () { return zone; }, interact: interact,
-                        scene: scene, camera: camera, begin: begin, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
+                        scene: scene, camera: camera, begin: begin, monsters: function () { return MONSTERS; }, combat: COMBAT, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
       frame();
     });
   }).catch(function (err) { console.error(err); fail('유적지를 불러오지 못했습니다: ' + (err && err.message ? err.message : err)); });
