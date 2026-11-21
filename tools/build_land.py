@@ -22,6 +22,7 @@ from PIL import Image
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import noise3 as N  # noqa: E402
+import village_plan as PLAN  # noqa: E402
 
 ROOT = HERE.parent
 OUT = ROOT / "assets_src" / "hq"
@@ -137,12 +138,22 @@ def main():
     south = np.clip((CZ - 90) / 120, 0, 1)
     forest = np.clip((forest_n * 0.5 + 0.5) - 0.62 + 0.5 * west + 0.25 * south, 0, 1)
     forest = np.clip(forest * 2.2, 0, 1) * (cs > 10)
-    vill = np.hypot(CX, CZ - 3) < 38
-    forest[vill] = 0
+    # the walled village: no forest inside or close to the wall; its streets are trodden dirt
+    poly = PLAN.wall_polygon()
+    inside = np.zeros(CX.shape, bool)
+    for (xi, zi), (xj, zj) in zip(poly, poly[-1:] + poly[:-1]):
+        cross = ((zi > CZ) != (zj > CZ)) & (CX < (xj - xi) * (CZ - zi) / (zj - zi + 1e-12) + xi)
+        inside ^= cross
+    wd, _ = seg_dist(CX, CZ, np.array(PLAN.WALL, float))
+    inside |= (wd < 12.0) | (np.hypot(CX, CZ - 3) < 38)
+    forest[inside] = 0
     road = np.zeros_like(CX)
     for r in ROADS:
         rd, _ = seg_dist(CX, CZ, r)
         road = np.maximum(road, np.clip(1 - (rd - 1.2) / 1.6, 0, 1))
+    for st in PLAN.STREETS:
+        rd, _ = seg_dist(CX, CZ, np.array(st, float))
+        road = np.maximum(road, np.clip(1 - (rd - PLAN.STREET_HALF + 0.4) / 1.0, 0, 1))
     rock = np.clip((cslope - 26) / 12, 0, 1) + 0.6 * np.clip((N.fbm(p * 3, 4, 41).reshape(CX.shape) - 0.35) * 3, 0, 1) * np.clip((cslope - 12) / 10, 0, 1)
     rock = np.clip(rock, 0, 1) * (cs > 2)
     grass = np.ones_like(CX)
@@ -172,6 +183,8 @@ def main():
             return False
         if math.hypot(x, z - 3) < clear:
             return False
+        if PLAN.inside(x, z) or PLAN.dist_to_wall(x, z) < 6.0:      # the walled village and a strip outside its wall
+            return False
         if math.hypot(x - CASTLE["x"], z - CASTLE["z"]) < CASTLE["island_r"] + 10:
             return False
         sx = at(cs, np.array([x]), np.array([z]))[0]
@@ -198,6 +211,9 @@ def main():
                     put(rng.choice(["tree_oak", "tree_oak_b", "tree_ash", "tree_ash"]), x, z, s=rng.uniform(0.8, 1.15))
             elif f < 0.05 and rng.random() < 0.035:
                 put(rng.choice(["tree_oak", "tree_oak_b"]), x, z, s=rng.uniform(0.9, 1.2))
+    # an orchard inside the wall: fruit trees (they drop apples and pears when shaken)
+    for k, (x, z) in enumerate(PLAN.ORCHARD):
+        put("tree_oak_b" if k % 3 else "tree_ash", x + rng.uniform(-0.8, 0.8), z + rng.uniform(-0.8, 0.8), s=rng.uniform(0.62, 0.78))
     # the castle island's rim: scanned cliff faces all round, except where the bridge lands
     for k in range(34):
         a = k / 34 * 2 * math.pi + rng.uniform(-0.05, 0.05)

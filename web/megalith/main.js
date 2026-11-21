@@ -860,7 +860,7 @@
   function startMusic() { MUSIC.on = true; }          // called from a click: browsers only allow sound after one
   function updateMusic(dt) {
     if (!MUSIC.on) return;
-    var want = zone === 'forest' ? 'ruins' : (Math.hypot(hero.pos.x, hero.pos.z - 3) < 40 ? 'village' : 'wild');
+    var want = zone === 'forest' ? 'ruins' : (inVillage(hero.pos.x, hero.pos.z, 3) ? 'village' : 'wild');
     Object.keys(MUSIC.tracks).forEach(function (k) {
       var a = MUSIC.tracks[k], target = k === want ? MUSIC.level : 0;
       a.volume = Math.max(0, Math.min(1, a.volume + Math.sign(target - a.volume) * Math.min(Math.abs(target - a.volume), dt * 0.3)));
@@ -930,7 +930,72 @@
     };
     return { material: m, uniforms: uniforms };
   }
-  function buildVillage(gltf, inst, data) {
+  function inVillage(x, z, margin) {
+    // inside the town wall (closed along the shore); `margin` widens it outward
+    var W = VILLAGE && VILLAGE.wall;
+    if (!W) return Math.hypot(x, z - 3) < 38 + (margin || 0);
+    var c = false, i, j;
+    for (i = 0, j = W.length - 1; i < W.length; j = i++) {
+      var xi = W[i][0], zi = W[i][1], xj = W[j][0], zj = W[j][1];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+    }
+    if (c || !margin) return c;
+    for (i = 0, j = W.length - 1; i < W.length; j = i++) {
+      var ax = W[j][0], az = W[j][1], dx = W[i][0] - ax, dz = W[i][1] - az;
+      var t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+      if (Math.hypot(x - ax - t * dx, z - az - t * dz) < margin) return true;
+    }
+    return false;
+  }
+  function buildVillageExt(V, protos, ext, xd) {
+    // The enlarged village (tools/hq_village.py): new buildings in the village's own materials, the new roofs laid
+    // with the village's slate pieces, stones and wall segments as instances, the wall's colliders and outline.
+    var group = V.group, mats = {}, kit = {}, add = [];
+    group.traverse(function (o) { if (o.isMesh && o.material && !/^terrain/.test(o.name) && !mats[o.material.name]) mats[o.material.name] = o.material; });
+    Object.keys(protos).forEach(function (k) { var m = protos[k].material; if (m && !mats[m.name]) mats[m.name] = m; });
+    ext.scene.updateMatrixWorld(true);
+    ext.scene.traverse(function (o) {
+      if (!o.isMesh) return;
+      if (/^kit_/.test(o.name)) kit[o.name] = o; else add.push(o);
+    });
+    add.forEach(function (o) {
+      var mn = o.material.name, m = mats[mn];
+      linearColors(o.geometry);
+      if (!m) { m = o.material; m.vertexColors = true; m.metalness = 0; if (mn !== 'glass') detailFor(m); mats[mn] = m; }
+      o.material = m;
+      o.castShadow = mn !== 'glass'; o.receiveShadow = true;
+      var mw = o.matrixWorld.clone();
+      group.add(o);
+      mw.decompose(o.position, o.quaternion, o.scale);
+    });
+    var mtx = new THREE.Matrix4(), col = new THREE.Color();
+    xd.instances.forEach(function (gi) {
+      var src = kit[gi.proto] || protos[gi.proto];
+      if (!src) return;
+      var geo = bakedGeometry(src), mat = kit[gi.proto] ? (mats[src.material.name] || src.material) : src.material;
+      mat.vertexColors = true;
+      var bin = atob(gi.f32), buf = new ArrayBuffer(bin.length), u8 = new Uint8Array(buf);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      var f = new Float32Array(buf);
+      var im = new THREE.InstancedMesh(geo, mat, gi.count);
+      for (var k = 0; k < gi.count; k++) {
+        var b = k * 15;
+        mtx.set(f[b], f[b + 1], f[b + 2], f[b + 3], f[b + 4], f[b + 5], f[b + 6], f[b + 7], f[b + 8], f[b + 9], f[b + 10], f[b + 11], 0, 0, 0, 1);
+        im.setMatrixAt(k, mtx);
+        col.setRGB(f[b + 12], f[b + 13], f[b + 14]);
+        im.setColorAt(k, col);
+      }
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true;
+      im.name = 'ext_' + gi.proto;
+      group.add(im);
+    });
+    V.boxes = V.boxes.concat(boxesOf(xd.colliders));
+    V.wall = xd.wall;
+    V.gates = xd.gates;
+  }
+  function buildVillage(gltf, inst, data, ext, extData) {
     var group = gltf.scene, protos = {}, drop = [];
     group.visible = false;
     var maxAniso = renderer.capabilities.getMaxAnisotropy();
@@ -953,7 +1018,7 @@
       o.castShadow = !big && mn !== 'glass';
       o.receiveShadow = true;
       if (/^castle_/.test(o.name)) { o.visible = false; return; }        // the first castle and its rock island: replaced by the castle out at sea
-      if (/^terrain/.test(o.name)) { o.material = o.material.clone(); o.material.userData = { clipR: 33 }; }   // the land takes over beyond the village
+      if (/^terrain/.test(o.name)) { o.material = o.material.clone(); o.material.userData = { clipR: 33 }; o.material.color.setRGB(0.8, 0.78, 0.72); }   // the land takes over beyond; toned to sit with its scanned meadow
       if (mn !== 'glass') detailFor(o.material, /^castle/.test(o.name) ? { stone: ['ashlar'] } : null);
     });
     drop.forEach(function (o) { o.parent.remove(o); });
@@ -1015,6 +1080,9 @@
     };
     V.boxes = boxesOf(data.colliders);
     V.bounds = data.bounds;
+    if (ext && extData) {
+      try { buildVillageExt(V, protos, ext, extData); } catch (err) { console.error('village ext', err); }
+    }
     V.ready = true;
     VILLAGE = V;
     // compile the village shaders now, while nobody is looking, so the summon does not stutter
@@ -1140,11 +1208,16 @@
         return out.buffer;
       });
     }
-    Promise.all([get('village.b64.txt'), get('village_inst.b64.txt'), fetch('village.json').then(function (r) { return r.json(); })]).then(function (res) {
+    // the enlarged village (new buildings, the town wall) loads alongside; the old village still builds without it
+    var extP = Promise.all([get('village_ext.b64.txt'), fetch('village_ext.json').then(function (r) { return r.json(); })])
+      .catch(function (err) { console.error('village ext', err); return null; });
+    Promise.all([get('village.b64.txt'), get('village_inst.b64.txt'), fetch('village.json').then(function (r) { return r.json(); }), extP]).then(function (res) {
       var glb = fflate.gunzipSync(new Uint8Array(res[0]));
       var instBytes = fflate.gunzipSync(new Uint8Array(res[1]));
       var inst = new Float32Array(instBytes.buffer, instBytes.byteOffset, instBytes.byteLength / 4);
-      parseBytes(glb).then(function (g) { buildVillage(g, inst, res[2]); }, function (err) { console.error('village', err); });
+      var ext = res[3];
+      var extG = ext ? parseBytes(fflate.gunzipSync(new Uint8Array(ext[0]))).catch(function (err) { console.error('village ext', err); return null; }) : Promise.resolve(null);
+      Promise.all([parseBytes(glb), extG]).then(function (g) { buildVillage(g[0], inst, res[2], g[1], ext && ext[1]); }, function (err) { console.error('village', err); });
     }).catch(function (err) { console.error('village', err); });
   }
   function summon() {
@@ -1813,7 +1886,7 @@
   function landOk(x, z) {
     if (!LAND.ready || Math.abs(x) > 245 || Math.abs(z) > 245) return false;
     if (LAND.groundAt(x, z) < LAND.water + 0.5) return false;
-    if (Math.hypot(x, z - 3) < 44) return false;                                      // not inside the village
+    if (Math.hypot(x, z - 3) < 44 || inVillage(x, z, 10)) return false;              // not inside the village or by its wall
     if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 75) return false;
     return true;
   }
@@ -1957,7 +2030,7 @@
           if (dh < K.reach + 0.6 && hero.hp > 0) hurtHero(m);
         }
         if (m.timer >= K.windup + 0.45) { m.state = 'chase'; m.cool = K.cool; }
-      } else if (dh < 16 && hero.hp > 0 && zone === 'village' && Math.hypot(hero.pos.x, hero.pos.z - 3) > 36) {
+      } else if (dh < 16 && hero.hp > 0 && zone === 'village' && !inVillage(hero.pos.x, hero.pos.z, 0)) {
         m.state = 'chase';                            // hunting Robin
         m.heading += Math.atan2(Math.sin(toward - m.heading), Math.cos(toward - m.heading)) * Math.min(1, 4 * dt);
         if (dh > K.reach) {
@@ -1987,8 +2060,10 @@
         }
       }
       // keep out of the village and the sea
-      var vd = Math.hypot(r.position.x, r.position.z - 3);
-      if (vd < 40) { r.position.x *= 40 / vd; r.position.z = 3 + (r.position.z - 3) * 40 / vd; }
+      if (inVillage(r.position.x, r.position.z, 3)) {      // the town wall keeps them out: back off, away from the village
+        var ox = r.position.x - 4, oz = r.position.z - 18, od = Math.hypot(ox, oz) || 1;
+        for (var it = 0; it < 60 && inVillage(r.position.x, r.position.z, 3); it++) { r.position.x += ox / od * 0.5; r.position.z += oz / od * 0.5; }
+      }
       r.position.y = LAND.groundAt(r.position.x, r.position.z);
       r.rotation.y = m.heading;
       animateMonster(m, moving, dt, dh);
@@ -2743,7 +2818,7 @@
       else { name = '엘렌하르 성'; sub = '바다 위의 옛 왕성'; }
     }
     else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 75) { name = '해안 둑길'; sub = '성으로 이어지는 돌다리'; }
-    else if (Math.hypot(x, z - 3) < 38) { name = '엘렌하르 마을'; sub = '바다와 언덕 사이의 마을'; }
+    else if (inVillage(x, z, 0)) { name = '엘렌하르 마을'; sub = '성벽 안, 바다와 언덕 사이의 마을'; }
     else if (x < -95) { name = '고분의 숲'; sub = '오래된 참나무와 전나무 숲'; }
     else if (z > 150) { name = '남쪽 해안'; sub = '바람이 머무는 언덕 끝'; }
     else { name = '바람언덕 들판'; sub = '엘렌하르를 둘러싼 풀밭'; }
