@@ -92,6 +92,8 @@ for name in ("trees_broad", "trees_fir", "props_hard", "props_soft", "castle"):
     (DIST / f"{name}.b64.txt").write_text(packed(HQ / f"{name}.glb"), encoding="ascii")
 shutil.copyfile(HQ / "castle.json", DIST / "castle.json")
 (DIST / "items.b64.txt").write_text(packed(ROOT / "assets_src" / "items" / "items_hq.glb"), encoding="ascii")
+for name in ("pickups_hq", "pickups_food"):       # things to pick up: tools/hq_pickups.py
+    (DIST / f"{name}.b64.txt").write_text(packed(ROOT / "assets_src" / "items" / f"{name}.glb"), encoding="ascii")
 for name in ("horror", "golem"):
     (DIST / f"{name}.b64.txt").write_text(packed(ROOT / "assets_src" / "monsters" / f"{name}.glb"), encoding="ascii")
 for f in sorted(DIST.iterdir()):

@@ -55,6 +55,7 @@
     for (var i = 0; i < BOXES.length; i++) {
       var b = BOXES[i];
       if (p.y >= b.y1 - 0.05 || p.y + HEIGHT <= b.y0) continue;
+      if (b.y1 - p.y <= STEP_UP) continue;            // a low ledge (a step, the bridge's end): stepped onto, not a wall
       var l = toLocal(b, p.x, p.z), ex = b.hx + RADIUS, ez = b.hz + RADIUS;
       if (Math.abs(l[0]) >= ex || Math.abs(l[1]) >= ez) continue;
       var px = ex - Math.abs(l[0]), pz = ez - Math.abs(l[1]);
@@ -743,7 +744,7 @@
     var prevX = p.x, prevZ = p.z;
     p.x += v.x * dt; p.z += v.z * dt;
     pushOut(p, v);
-    if (zone === 'village' && LAND.ready && groundAt(p.x, p.z) < LAND.water - 0.7) { p.x = prevX; p.z = prevZ; }   // the sea stops Robin at wading depth
+    if (zone === 'village' && LAND.ready && floorAt(p.x, p.z, p.y) < LAND.water - 0.7) { p.x = prevX; p.z = prevZ; }   // the sea stops Robin at wading depth (a bridge deck is floor)
     var bc = zone === 'village' ? VILLAGE.bounds : { x: 0, z: 0, r: WORLD.bounds };
     var r = Math.hypot(p.x - bc.x, p.z - bc.z);
     if (r > bc.r) {
@@ -1368,6 +1369,7 @@
           q.setFromAxisAngle(up, it[3]); s.setScalar(it[4]); p.set(it[0], it[1] - (opts.sink || 0) * it[4], it[2]);
           mtx.compose(p, q, s).multiply(local);
           im.setMatrixAt(i, mtx);
+          (it.refs = it.refs || []).push([im, i]);         // so one tree or rock can later be taken out of its chunk
           cy += it[1]; maxS = Math.max(maxS, it[4]);
         });
         cy /= items.length;
@@ -1388,7 +1390,9 @@
   function landCollider(x, z, r, grid) {
     var k = Math.floor(x / LAND.cell) + ',' + Math.floor(z / LAND.cell);
     grid = grid || LAND.grid;
-    (grid[k] = grid[k] || []).push({ x: x, z: z, r: r });
+    var c = { x: x, z: z, r: r };
+    (grid[k] = grid[k] || []).push(c);
+    return c;
   }
   function landPush(p, v) {
     var grid = zone === 'forest' ? FL.grid : LAND.grid;
@@ -1552,16 +1556,23 @@
         if (protos[name]) landInstances(name, list, protos[name], 0, 95, { sink: 0.15 });
         if (protos[name + '_far']) landInstances(name + '_far', list, protos[name + '_far'], 85, 420, { sink: 0.15, shadow: false });
         else if (protos[name]) landInstances(name + '_mid', list, protos[name], 95, 420, { sink: 0.15, shadow: false });
-        list.forEach(function (it) { landCollider(it[0], it[2], (/fir/.test(name) ? 0.42 : /ash/.test(name) ? 0.35 : 0.55) * it[4]); });
+        list.forEach(function (it) {
+          var r = (/fir/.test(name) ? 0.42 : /ash/.test(name) ? 0.35 : 0.55) * it[4];
+          resAdd('tree', name, it, landCollider(it[0], it[2], r), r);
+        });
         return;
       }
       if (!protos[name] || !pm) return;
       var kind = pm.kind, maxD = { rock: 320, cliff: 400, stump: 170, log: 170, roots: 150, twigs: 70, fern: 75, shrub: 110, weed: 60, flower: 55, moss: 40, pebble: 40 }[kind] || 90;
       landInstances(name, list, protos[name], 0, maxD, { shadow: kind !== 'flower' && kind !== 'pebble' && kind !== 'moss', sink: kind === 'rock' || kind === 'cliff' ? 0.06 : 0.0 });
       if (kind === 'rock' || kind === 'cliff' || kind === 'stump' || kind === 'log') {
-        list.forEach(function (it) { landCollider(it[0], it[2], Math.min(pm.size[0], pm.size[2]) * 0.42 * it[4]); });
+        list.forEach(function (it) {
+          var r = Math.min(pm.size[0], pm.size[2]) * 0.42 * it[4], col = landCollider(it[0], it[2], r);
+          if (kind === 'rock' && Math.max(pm.size[0], pm.size[1], pm.size[2]) * it[4] < 3.2) resAdd('rock', name, it, col, r, pm.size[1] * it[4]);
+        });
       }
     });
+    LAND.protos = protos;
     // leaves and fronds: alpha-tested, double-sided, with wind, and shadows cut to their shapes
     LAND.group.traverse(function (o) {
       if (!o.isMesh || !o.material) return;
@@ -1688,7 +1699,10 @@
     LAND.group.add(g);
     freeze(g);
     precompile(g);
-    LAND.boxes = (LAND.boxes || []).concat(boxesOf(info.colliders.map(function (c) {
+    // the gate passage between the bridge's end and the courtyard floor needs a floor of its own
+    var cols = info.colliders.concat([{ x: 0, z: 20.3, yaw: 0, hx: 2.3, hz: 2.8, y0: -1, y1: 0.05 },
+      { x: 0, z: 2.0, yaw: 0, hx: 1.7, hz: 0.85, y0: 0, y1: 1.2 }]);      // ...and so does the keep's doorway, from the steps to the hall
+    LAND.boxes = (LAND.boxes || []).concat(boxesOf(cols.map(function (c) {
       return { x: o0[0] + c.x, z: o0[2] + c.z, yaw: -c.yaw, hx: c.hx, hz: c.hz, y0: o0[1] + c.y0, y1: o0[1] + c.y1 };
     })));
     // warm light from the hall's fire and candles
@@ -1863,7 +1877,7 @@
       var W = WEAPONS[INV.held] || WEAPONS[0];
       if (d > W.reach + m.radius || (dx * fx + dz * fz) / Math.max(d, 1e-3) < W.arc) continue;
       any = true;
-      var dmg = W.dmg * (0.85 + Math.random() * 0.3);
+      var dmg = W.dmg * (0.85 + Math.random() * 0.3) * buffMult();
       m.hp -= dmg;
       m.flash = 0.18; m.state = m.hp > 0 ? 'hurt' : 'dead'; m.timer = 0.35;
       m.knock.set(dx / d * 5.5, dz / d * 5.5);
@@ -1882,12 +1896,14 @@
           sever(m, n, new THREE.Vector3(Math.cos(a) * 0.8 + _hitV.x, 0, Math.sin(a) * 0.8 + _hitV.z));
         });
         m.timer = 0;
+        dropLoot(m);
         COMBAT.kills++;
         showArea(COMBAT.kills >= COMBAT.need ? '성으로 가는 다리가 열렸다' : '몬스터 처치  ' + COMBAT.kills + ' / ' + COMBAT.need,
                  COMBAT.kills >= COMBAT.need ? '서쪽 해안길 끝, 바다 위의 성으로' : (m.kind === 'golem' ? '얼음 골렘' : '촉수 괴물'), true);
       }
     }
     if (any) COMBAT.shake = 0.18;
+    else strikeResource(fx, fz);           // nothing alive in reach: the blow lands on a tree or a rock
   }
   function hurtHero(m) {
     if (hero.hp <= 0) return;
@@ -1908,6 +1924,8 @@
     if (!LAND.ready || zone !== 'village') return;
     hero.pos.x = Math.max(-250, Math.min(250, hero.pos.x)); hero.pos.z = Math.max(-250, Math.min(250, hero.pos.z));   // the mapped square
     if (COMBAT.strike > 0 && (COMBAT.strike -= dt) <= 0) heroStrike();
+    updateRes(dt);
+    updatePickups(dt);
     for (var i = 0; i < MONSTERS.length; i++) {
       var m = MONSTERS[i], r = m.root, K = m.K;
       m.t += dt;
@@ -2088,12 +2106,7 @@
     if (INV.items.bag) INV.items.bag.visible = INV.bag;
     if (INV.items.sword) INV.items.sword.visible = INV.held === 1;
     if (INV.items.axe) INV.items.axe.visible = INV.held === 2;
-    if (!INV.bar) return;
-    INV.bar.hidden = !INV.bag;
-    INV.bar.querySelectorAll('button').forEach(function (b, i) {
-      b.classList.toggle('on', i === INV.held);
-      b.disabled = i > 0 && !INV.weapons;
-    });
+    if (typeof renderBag === 'function') renderBag();
   }
   function hold(i) {
     if (!INV.bag || (i > 0 && !INV.weapons) || hero.attacking) return;
@@ -2103,37 +2116,482 @@
     var id = n.id;
     if (id === 'npc_marta' && !INV.bag) {
       say([{ who: id, text: '그 차림으로 어딜 가려고요? 자, 이 가죽 가방 하나 가져가요. 쓸 만한 걸 넣고 다녀야지.' }], function () {
-        INV.bag = true; refreshItems(); showArea('가죽 가방을 얻었다', '숫자 키 1 · 2 · 3 으로 손에 들 것을 고른다', true);
+        INV.bag = true; refreshItems(); showArea('가죽 가방을 얻었다', 'I 키로 가방을 연다  ·  주운 것은 저절로 들어간다', true);
       });
     } else if (id === 'npc_oswin' && !INV.weapons) {
       if (!INV.bag) { say([{ who: id, text: '맨손으로 들판에 나가겠다고? 시장의 마르타에게 먼저 가방부터 얻어 오시오. 무기는 그다음이오.' }]); return; }
       say([{ who: id, text: '가방이 있군. 좋소. 이 칼과 도끼를 가져가시오. 들판의 괴물들은 칼로 베고, 단단한 골렘은 도끼로 쪼개시오.' }], function () {
-        INV.weapons = true; INV.held = 1; refreshItems(); showArea('칼과 도끼를 얻었다', '2 칼 · 3 도끼 · 1 맨손', true);
+        INV.weapons = true; INV.held = 1; refreshItems(); showArea('칼과 도끼를 얻었다', '1 맨손 · 2 칼 · 3 도끼  ·  도끼로 나무를 베고 바위를 깬다', true);
       });
     }
   }
-  (function itemBar() {
+  window.addEventListener('keydown', function (e) {          // 1-3: what Robin holds
+    var k = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
+    if (k == null || !started || talk.active) return;
+    e.preventDefault(); hold(k);
+  });
+
+  // ---------------------------------------------------------------- trees and rocks that can be cut and broken
+  // Every scattered tree and every rock small enough to split is registered here. A blow on one swaps its
+  // instance for a free copy: trees sway back on a damped spring, and after enough axe blows topple under
+  // their own weight (the torque grows as they lean), bounce once and leave a stump and logs; rocks shatter
+  // into tumbling chunks and leave stones. Fists and the sword shake fruit out of the broadleaf trees.
+  var RES = { grid: {}, live: [], tall: {} };
+  var ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
+  function resAdd(kind, name, it, col, r, h) {
+    var k = Math.floor(it[0] / LAND.cell) + ',' + Math.floor(it[2] / LAND.cell);
+    (RES.grid[k] = RES.grid[k] || []).push({ kind: kind, name: name, it: it, col: col, r: r, h: h || 0, hits: 0, fruit: /oak|ash/.test(name) ? 3 : 0, obj: null, gone: false });
+  }
+  function resFind(fx, fz, reach) {
+    var p = hero.pos, gx = Math.floor(p.x / LAND.cell), gz = Math.floor(p.z / LAND.cell), best = null, bd = 1e9;
+    for (var dx = -1; dx <= 1; dx++) for (var dz = -1; dz <= 1; dz++) {
+      var list = RES.grid[(gx + dx) + ',' + (gz + dz)];
+      if (!list) continue;
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i];
+        if (r.gone) continue;
+        var ex = r.it[0] - p.x, ez = r.it[2] - p.z, c = Math.hypot(ex, ez), d = c - r.r;
+        if (d > reach || (ex * fx + ez * fz) / Math.max(c, 1e-3) < 0.25) continue;
+        if (d < bd) { bd = d; best = r; }
+      }
+    }
+    return best;
+  }
+  function hideInstance(it) {
+    (it.refs || []).forEach(function (ref) { ref[0].setMatrixAt(ref[1], ZERO_M); ref[0].instanceMatrix.needsUpdate = true; });
+  }
+  function freeCopy(name, it, sink) {
+    var proto = LAND.protos && LAND.protos[name];
+    if (!proto) return null;
+    var piv = new THREE.Group(), body = proto.clone(true);
+    piv.position.set(it[0], it[1] - sink * it[4], it[2]);
+    body.position.set(0, 0, 0); body.rotation.set(0, it[3], 0); body.scale.setScalar(it[4]);
+    body.traverse(function (o) {
+      o.matrixAutoUpdate = true;
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = true;
+      if (/^leaf_/.test(o.material.name)) o.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: o.material.map, alphaTest: 0.4 });
+    });
+    piv.add(body);
+    LAND.group.add(piv);
+    return piv;
+  }
+  function treeHeight(name) {
+    if (RES.tall[name] == null) {
+      var p = LAND.protos[name];
+      RES.tall[name] = p ? new THREE.Box3().setFromObject(p).getSize(new THREE.Vector3()).y : 10;
+    }
+    return RES.tall[name];
+  }
+  function strikeResource(fx, fz) {
+    if (zone !== 'village' || !LAND.ready) return;
+    var W = WEAPONS[INV.held] || WEAPONS[0], r = resFind(fx, fz, W.reach + 0.3);
+    if (!r) return;
+    var it = r.it, axe = INV.held === 2, dx = it[0] - hero.pos.x, dz = it[2] - hero.pos.z, d = Math.hypot(dx, dz) || 1;
+    dx /= d; dz /= d;
+    _wp.set(it[0] - dx * r.r, hero.pos.y + 1.05, it[2] - dz * r.r);           // where the blow lands, on the bark or the stone
+    if (r.kind === 'tree') {
+      if (!r.obj) {
+        r.obj = freeCopy(r.name, it, 0.15);
+        if (!r.obj) return;
+        hideInstance(it);
+        r.tilt = 0; r.tiltV = 0; r.ax = new THREE.Vector3(1, 0, 0); r.fall = false; r.t = 0;
+        RES.live.push(r);
+      }
+      r.ax.set(dz, 0, -dx);
+      r.tiltV += (axe ? 0.2 : 0.12) / Math.max(0.7, it[4]);
+      burst(_wp, axe ? 0x9a7a52 : 0x6b8a3e, axe ? 24 : 12, 3);
+      COMBAT.shake = Math.max(COMBAT.shake, axe ? 0.16 : 0.1);
+      if (r.fruit > 0 && (!axe || Math.random() < 0.4)) {                         // fruit shaken loose from the crown
+        r.fruit--;
+        var H = treeHeight(r.name) * it[4], a = Math.random() * 6.28, rr = 0.8 + Math.random() * 1.6;
+        spawnPickup(/ash/.test(r.name) ? 'pear' : 'apple', it[0] + Math.cos(a) * rr, it[1] + H * 0.55, it[2] + Math.sin(a) * rr, Math.cos(a) * 0.6, 0, Math.sin(a) * 0.6);
+      }
+      if (axe && ++r.hits >= (it[4] > 1.15 ? 4 : 3)) {
+        r.fall = true; r.fallV = 0.25; r.gone = true;
+        // it comes to rest on the slope it falls onto, not at a fixed angle
+        var reach = treeHeight(r.name) * it[4] * 0.55, drop = groundAt(it[0], it[2]) - groundAt(it[0] + dx * reach, it[2] + dz * reach);
+        r.rest = Math.max(1.15, Math.min(1.95, Math.PI / 2 + Math.atan2(drop, reach) - 0.06));
+        r.col.r = r.r * 0.85;                                                       // the stump stays solid
+        var st = LAND.protos.tree_stump_01;
+        if (st) {
+          var sb = new THREE.Box3().setFromObject(st).getSize(new THREE.Vector3());
+          var stump = freeCopy('tree_stump_01', [it[0], it[1], it[2], it[3] + 1.3, r.r * 2.5 / Math.max(sb.x, sb.z)], 0.05);
+          if (stump) r.stump = stump;
+        }
+        showArea('나무가 쓰러진다', '통나무를 주워 가방에 넣자', true);
+      } else if (!axe && !r.fruit && INV.weapons && clockNow - (RES.hintAt || -99) > 8) {
+        RES.hintAt = clockNow; toast('나무는 도끼로 벨 수 있다  ·  3 도끼');
+      }
+    } else {
+      burst(_wp, 0x8d8a83, axe ? 22 : 10, 3.4);
+      burst(_wp, 0xffd9a0, 6, 5);                                                   // sparks off the edge
+      COMBAT.shake = Math.max(COMBAT.shake, 0.14);
+      if (!axe) { if (clockNow - (RES.hintAt || -99) > 8) { RES.hintAt = clockNow; toast(INV.weapons ? '바위는 도끼로 깨야 한다  ·  3 도끼' : '맨손으로는 바위를 깰 수 없다'); } return; }
+      if (++r.hits < 3) return;
+      r.gone = true; r.col.r = 0;
+      hideInstance(it);
+      var size = Math.max(r.r * 2.2, r.h), keys = ['rock_07', 'rock_09', 'stone_01'].filter(function (k) { return LAND.protos[k]; });
+      for (var i = 0; i < 8 && keys.length; i++) {
+        var proto = LAND.protos[keys[i % keys.length]], ch = proto.clone(true);
+        var pb = new THREE.Box3().setFromObject(proto).getSize(new THREE.Vector3()), k = size * (0.2 + Math.random() * 0.18) / Math.max(pb.x, pb.y, pb.z);
+        ch.position.set(it[0] + (Math.random() - 0.5) * size * 0.5, it[1] + r.h * (0.2 + Math.random() * 0.5), it[2] + (Math.random() - 0.5) * size * 0.5);
+        ch.scale.setScalar(k); ch.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        ch.traverse(function (o) { o.matrixAutoUpdate = true; if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        LAND.group.add(ch);
+        var a = Math.random() * 6.28;
+        COMBAT.debris.push({ obj: ch, vel: new THREE.Vector3(Math.cos(a) * 3 + dx * 2.5, 2.5 + Math.random() * 3.5, Math.sin(a) * 3 + dz * 2.5),
+                             spin: new THREE.Vector3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8), life: 16, rest: false });
+      }
+      burst(_wp, 0x9a968e, 40, 5);
+      COMBAT.shake = 0.32;
+      for (var s = 0; s < 2 + (Math.random() < 0.5 ? 1 : 0); s++) {
+        var b = Math.random() * 6.28;
+        spawnPickup('stone', it[0], it[1] + r.h * 0.6, it[2], Math.cos(b) * 2.2, 3, Math.sin(b) * 2.2);
+      }
+    }
+  }
+  function updateRes(dt) {
+    for (var i = RES.live.length - 1; i >= 0; i--) {
+      var r = RES.live[i], o = r.obj;
+      if (r.fall) {
+        if (!r.down) {                                  // toppling: gravity's pull grows with the lean
+          r.fallV += (0.9 + 6.0 * Math.sin(r.tilt)) * dt / Math.max(0.7, Math.sqrt(r.it[4]));
+          r.tilt += r.fallV * dt;
+          if (r.tilt >= r.rest) {
+            r.tilt = r.rest;
+            if (r.fallV > 0.8) { r.fallV *= -0.18; if (!r.hitGround) landTree(r); }
+            else { r.down = true; r.fallV = 0; }
+          }
+        } else if ((r.t += dt) > 12) {                  // lies a good while, then settles into the ground
+          o.position.y -= dt * 0.45;
+          if (r.t > 17) { LAND.group.remove(o); RES.live.splice(i, 1); continue; }
+        }
+      } else {                                          // swaying back after a blow: a damped spring
+        r.tiltV += (-r.tilt * 30 - r.tiltV * 3.2) * dt;
+        r.tilt += r.tiltV * dt;
+      }
+      o.quaternion.setFromAxisAngle(r.ax, r.tilt);
+    }
+  }
+  function landTree(r) {
+    r.hitGround = true;
+    var it = r.it, H = treeHeight(r.name) * it[4], fx = r.ax.z * -1, fz = r.ax.x;      // the fall direction, from the axis
+    COMBAT.shake = Math.max(COMBAT.shake, 0.4);
+    _wp.set(it[0] + fx * H * 0.65, it[1] + 0.8, it[2] + fz * H * 0.65);
+    burst(_wp, 0x5f7f3a, 46, 6);
+    burst(_wp, 0x8a7458, 20, 4);
+    var n = it[4] > 1.0 ? 3 : 2;
+    for (var k = 0; k < n; k++) {
+      var t = 0.16 + k * 0.13, x = it[0] + fx * H * t, z = it[2] + fz * H * t;
+      spawnPickup('log', x, groundAt(x, z) + 0.6, z, fz * (Math.random() - 0.5) * 2, 1.5, -fx * (Math.random() - 0.5) * 2);
+    }
+  }
+
+  // ---------------------------------------------------------------- pickups, the bag and food
+  var ITEMS = {
+    apple: { name: '사과', size: 0.15, food: { hp: 15 }, note: '아삭하고 달다.' },
+    pear: { name: '배', size: 0.16, food: { hp: 10, atk: 0.2, t: 30 }, note: '물이 많고 시원하다.' },
+    meat: { name: '촉수 괴물 고기', size: 0.45, food: { hp: 30, atk: 0.5, t: 45 }, note: '질기고 비릿하지만, 먹으면 힘이 솟는다.' },
+    core: { name: '얼음 골렘의 핵', size: 0.2, use: { atk: 0.4, t: 60 }, verb: '깨뜨리기', note: '차가운 빛이 맥박처럼 뛴다. 깨뜨리면 냉기가 팔에 스민다.' },
+    log: { name: '통나무', size: 0.62, note: '도끼로 벤 나무 토막. 무언가를 지을 때 쓸 수 있을 것 같다.' },
+    stone: { name: '돌', size: 0.24, note: '바위에서 떨어져 나온 단단한 돌 조각.' }
+  };
+  var PICK = { protos: {}, list: [], group: null, bag: {}, order: [], buff: null, icons: {}, sel: null, hintAt: -99, items: null };
+  function protoOf(node, size) {
+    var o = node.clone(true);
+    o.position.set(0, 0, 0);
+    o.traverse(function (c) { c.matrixAutoUpdate = true; if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    o.updateMatrixWorld(true);
+    var b = new THREE.Box3().setFromObject(o), c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3());
+    var k = size / Math.max(sz.x, sz.y, sz.z), g = new THREE.Group();
+    o.scale.multiplyScalar(k);
+    o.position.set(-c.x * k, -b.min.y * k, -c.z * k);
+    g.add(o);
+    return g;
+  }
+  function setupPickups(hq, food) {
+    [['meat', hq], ['core', hq], ['log', hq], ['apple', food], ['pear', food]].forEach(function (e) {
+      var n = e[1].scene.getObjectByName(e[0]);
+      if (n) PICK.protos[e[0]] = protoOf(n, ITEMS[e[0]].size);
+    });
+    if (LAND.protos && LAND.protos.stone_01) PICK.protos.stone = protoOf(LAND.protos.stone_01, ITEMS.stone.size);
+    var core = PICK.protos.core;
+    if (core) core.traverse(function (o) { if (o.isMesh && o.material.emissiveMap) { o.material = o.material.clone(); o.material.emissiveIntensity = 2.2; } });
+    PICK.group = new THREE.Group(); PICK.group.name = 'pickups';
+    LAND.group.add(PICK.group);
+    makeIcons();
+  }
+  function spawnPickup(type, x, y, z, vx, vy, vz) {
+    var P = PICK.protos[type];
+    if (!P || !PICK.group) return;
+    var o = P.clone(true);
+    o.position.set(x, y, z); o.rotation.y = Math.random() * 6.28;
+    PICK.group.add(o);
+    PICK.list.push({ type: type, obj: o, vel: new THREE.Vector3(vx || 0, vy || 0, vz || 0), rest: false, spin: (Math.random() - 0.5) * 7, fly: 0, age: 0, label: null });
+    if (PICK.list.length > 90) dropPickup(0);
+  }
+  function dropPickup(i) {
+    var p = PICK.list[i];
+    PICK.group.remove(p.obj);
+    if (p.label) p.label.remove();
+    PICK.list.splice(i, 1);
+  }
+  var _pv = new THREE.Vector3();
+  function updatePickups(dt) {
+    if (!PICK.group) return;
+    var W = canvas.clientWidth, Hh = canvas.clientHeight, chest = hero.pos.y + 1.1;
+    for (var i = PICK.list.length - 1; i >= 0; i--) {
+      var p = PICK.list[i], o = p.obj;
+      p.age += dt;
+      if (p.fly > 0) {                                   // into the satchel: a short arc to Robin's hip
+        p.fly += dt / 0.32;
+        var t = Math.min(1, p.fly);
+        o.position.lerpVectors(p.from, _pv.set(hero.pos.x, hero.pos.y + 0.85, hero.pos.z), t);
+        o.position.y += Math.sin(t * Math.PI) * 0.6;
+        o.scale.setScalar(1 - t * 0.7);
+        if (t >= 1) { addToBag(p.type, 1); dropPickup(i); }
+        continue;
+      }
+      if (!p.rest) {
+        p.vel.y -= 14 * dt;
+        o.position.addScaledVector(p.vel, dt);
+        o.rotation.y += p.spin * dt;
+        var f = floorAt(o.position.x, o.position.z, o.position.y + 0.3);
+        if (o.position.y < f) {
+          o.position.y = f;
+          if (Math.abs(p.vel.y) < 1.4) { p.vel.set(0, 0, 0); p.rest = true; }
+          else { p.vel.y *= -0.3; p.vel.x *= 0.5; p.vel.z *= 0.5; p.spin *= 0.5; }
+        }
+      }
+      var dx = o.position.x - hero.pos.x, dz = o.position.z - hero.pos.z, d = Math.hypot(dx, dz);
+      if (p.age > 0.7 && d < 1.5 && Math.abs(o.position.y - hero.pos.y) < 1.8 && hero.hp > 0) {
+        if (INV.bag) { p.fly = 1e-4; p.from = o.position.clone(); if (p.label) p.label.hidden = true; continue; }
+        if (clockNow - PICK.hintAt > 7) { PICK.hintAt = clockNow; toast('가방이 없어 주울 수 없다  ·  마을 시장의 마르타를 찾아가자'); }
+      }
+      // a name over things within reach of the eye
+      if (d < 9) {
+        if (!p.label) { p.label = document.createElement('div'); p.label.className = 'picklabel'; p.label.textContent = ITEMS[p.type].name; stage.appendChild(p.label); }
+        _pv.set(o.position.x, o.position.y + Math.max(0.35, ITEMS[p.type].size * 0.9), o.position.z).project(camera);
+        var vis = _pv.z < 1 && Math.abs(_pv.x) < 1.1 && Math.abs(_pv.y) < 1.1 && !talk.active;
+        p.label.hidden = !vis;
+        if (vis) {
+          p.label.style.transform = 'translate(' + ((_pv.x * 0.5 + 0.5) * W).toFixed(1) + 'px,' + ((-_pv.y * 0.5 + 0.5) * Hh).toFixed(1) + 'px) translate(-50%,-100%)';
+          p.label.style.opacity = Math.min(1, (9 - d) / 2.5).toFixed(2);
+        }
+      } else if (p.label) p.label.hidden = true;
+    }
+    if (PICK.buff && PICK.buff.until <= clockNow) { PICK.buff = null; }
+    if ((PICK.hudTick = (PICK.hudTick || 0) + dt) > 0.25) { PICK.hudTick = 0; updateBuffHud(); }
+  }
+  function addToBag(type, n) {
+    PICK.bag[type] = (PICK.bag[type] || 0) + n;
+    if (PICK.order.indexOf(type) < 0) PICK.order.push(type);
+    toast(ITEMS[type].name + '  +' + n, PICK.icons[type]);
+    renderBag();
+  }
+  function buffMult() { return PICK.buff && PICK.buff.until > clockNow ? 1 + PICK.buff.atk : 1; }
+  function useItem(type) {
+    var D = ITEMS[type], e = D && (D.food || D.use);
+    if (!e || !PICK.bag[type] || hero.hp <= 0) return;
+    PICK.bag[type]--;
+    if (!PICK.bag[type]) { PICK.order.splice(PICK.order.indexOf(type), 1); if (PICK.sel === type) PICK.sel = null; }
+    var said = [];
+    if (e.hp) { var before = hero.hp; hero.hp = Math.min(100, hero.hp + e.hp); said.push('체력 +' + Math.round(hero.hp - before)); }
+    if (e.atk) {
+      var b = PICK.buff && PICK.buff.until > clockNow ? PICK.buff : null;
+      PICK.buff = { atk: Math.max(e.atk, b ? b.atk : 0), until: Math.max(clockNow + e.t, b ? b.until : 0), cold: type === 'core' || (b && b.cold) };
+      said.push('공격력 +' + Math.round(e.atk * 100) + '%  ' + e.t + '초');
+    }
+    _wp.set(hero.pos.x, hero.pos.y + 1.2, hero.pos.z);
+    burst(_wp, type === 'core' ? 0x9fdcff : 0xffc27a, 26, 2.2);
+    toast((D.food ? D.name + '을(를) 먹었다' : D.name + '을(를) 깨뜨렸다') + '  ·  ' + said.join('  ·  '), PICK.icons[type]);
+    updateHud(); updateBuffHud(); renderBag();
+  }
+  function dropLoot(m) {
+    var p = m.root.position, golem = m.kind === 'golem', n = golem ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0);
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * 6.28;
+      spawnPickup(golem ? 'core' : 'meat', p.x, p.y + (golem ? 1.6 : 1.0), p.z, Math.cos(a) * 1.8, 3.8, Math.sin(a) * 1.8);
+    }
+    if (golem) for (var j = 0; j < 2; j++) { var b = Math.random() * 6.28; spawnPickup('stone', p.x, p.y + 1.2, p.z, Math.cos(b) * 2.4, 3.2, Math.sin(b) * 2.4); }
+  }
+
+  // icons: each item rendered once, off screen, with the same sky light as the world
+  function iconOf(node, prep) {
+    var S = 192, rt = new THREE.WebGLRenderTarget(S, S);
+    rt.texture.encoding = THREE.sRGBEncoding;
+    var sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(26, 1, 0.01, 60);
+    sc.environment = LAND.envTex || null;
+    sc.add(new THREE.HemisphereLight(0xfff1de, 0x40372b, 0.7));
+    var key = new THREE.DirectionalLight(0xfff4e8, 2.4); key.position.set(2.2, 3.4, 2.6); sc.add(key);
+    var rim = new THREE.DirectionalLight(0xbfd6ff, 1.1); rim.position.set(-2.5, 1.2, -2); sc.add(rim);
+    var o = node.clone(true), holder = new THREE.Group();
+    o.position.set(0, 0, 0); o.scale.set(1, 1, 1);
+    holder.add(o);
+    if (prep) prep(o, holder);
+    sc.add(holder);
+    holder.updateMatrixWorld(true);
+    var b = new THREE.Box3().setFromObject(holder), c = b.getCenter(new THREE.Vector3()), rad = b.getSize(new THREE.Vector3()).length() / 2;
+    var dist = rad / Math.sin(THREE.MathUtils.degToRad(13)) * 1.04;
+    cam.position.set(c.x + dist * 0.2, c.y + dist * 0.45, c.z + dist * 0.87); cam.lookAt(c);
+    var prevT = renderer.getRenderTarget(), cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+    renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(sc, cam);
+    var px = new Uint8Array(S * S * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, S, S, px);
+    renderer.setRenderTarget(prevT); renderer.setClearColor(cc, ca);
+    rt.dispose();
+    var cv = document.createElement('canvas'); cv.width = cv.height = S;
+    var cx = cv.getContext('2d'), im = cx.createImageData(S, S);
+    for (var y = 0; y < S; y++) im.data.set(px.subarray((S - 1 - y) * S * 4, (S - y) * S * 4), y * S * 4);
+    cx.putImageData(im, 0, 0);
+    var out = document.createElement('canvas'); out.width = out.height = 96;
+    var ox = out.getContext('2d'); ox.imageSmoothingQuality = 'high'; ox.drawImage(cv, 0, 0, 96, 96);
+    var cover = 0;
+    for (var a = 3; a < px.length; a += 4) if (px[a] > 40) cover++;
+    return { url: out.toDataURL('image/png'), cover: cover };
+  }
+  function makeIcons() {
+    if (!PICK.group || !PICK.items) return;          // both the pickups and Robin's gear must be loaded
+    Object.keys(PICK.protos).forEach(function (k) { PICK.icons[k] = iconOf(PICK.protos[k], k === 'log' ? function (o, h) { h.rotation.y = 0.6; } : null).url; });
+    ['sword', 'axe'].forEach(function (k) {
+      var n = PICK.items.scene.getObjectByName(k);
+      if (!n) return;
+      // stand the blade up the diagonal, turned whichever way shows its broad face to the camera
+      var best = null;
+      [0, Math.PI / 2].forEach(function (spin) {
+        var ic = iconOf(n, function (o) { o.quaternion.identity(); o.rotation.set(-1.75, spin, -0.78, 'ZYX'); });
+        if (!best || ic.cover > best.cover) best = ic;
+      });
+      PICK.icons[k] = best.url;
+    });
+    renderBag();
+  }
+
+  // the satchel panel (I / B, or the button under Robin's health): what he holds, what he carries
+  (function bagPanel() {
     var css = document.createElement('style');
     css.textContent = [
-      '#itembar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;padding:8px;pointer-events:auto}',
-      '#itembar button{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;',
-      '  font:600 13px var(--font-ui);color:var(--ink);background:rgba(243,239,228,.06);border:1px solid var(--panel-line);border-radius:3px}',
-      '#itembar button kbd{font-size:10px;padding:2px 5px}',
-      '#itembar button.on{border-color:var(--ember);background:rgba(243,169,95,.16);box-shadow:inset 0 0 0 1px var(--ember)}',
-      '#itembar button:disabled{opacity:.35;cursor:default}',
-      '#stage.talking #itembar{display:none}'].join('\n');
+      '#bagbtn{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:168px;display:flex;align-items:center;gap:8px;padding:6px 10px;',
+      '  font:600 12px var(--font-ui);letter-spacing:.08em;color:var(--ink);cursor:pointer;pointer-events:auto}',
+      '#bagbtn kbd{font-size:10px;padding:1px 5px}',
+      '#bagbtn .held{color:var(--ink-dim);font-weight:500}',
+      '#bagpanel{position:absolute;right:max(16px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);width:340px;max-width:calc(100vw - 32px);',
+      '  padding:16px 16px 14px;pointer-events:auto;max-height:calc(100% - 120px);overflow:auto}',
+      '#bagpanel .bp-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}',
+      '#bagpanel .bp-title{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:.2em;color:var(--ink)}',
+      '#bagpanel .bp-x{font:500 12px var(--font-ui);color:var(--ink-dim);background:none;border:0;cursor:pointer;padding:4px}',
+      '#bagpanel .bp-sec{font-size:11px;letter-spacing:.16em;color:var(--ink-dim);margin:12px 0 7px}',
+      '#bagpanel .bp-hands{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}',
+      '#bagpanel .slot{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;',
+      '  font:600 12px var(--font-ui);color:var(--ink);background:rgba(243,239,228,.05);border:1px solid var(--panel-line);border-radius:3px;padding:4px}',
+      '#bagpanel .slot img{width:72%;height:auto;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}',
+      '#bagpanel .bp-hands .slot{aspect-ratio:auto;height:74px}',
+      '#bagpanel .bp-hands .slot img{width:46px}',
+      '#bagpanel .slot kbd{position:absolute;left:4px;top:4px;font-size:9px;padding:0 4px}',
+      '#bagpanel .slot .n{position:absolute;right:5px;bottom:3px;font-size:12px;color:var(--ink);text-shadow:0 1px 2px #000}',
+      '#bagpanel .slot.on{border-color:var(--ember);background:rgba(243,169,95,.14);box-shadow:inset 0 0 0 1px var(--ember)}',
+      '#bagpanel .slot:disabled,#bagpanel .slot.empty{opacity:.35;cursor:default}',
+      '#bagpanel .slot.empty{opacity:.5}',
+      '#bagpanel .bp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}',
+      '#bagpanel .bp-detail{margin-top:12px;min-height:84px;padding-top:11px;border-top:1px solid var(--panel-line)}',
+      '#bagpanel .bp-name{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}',
+      '#bagpanel .bp-note{font-size:13px;line-height:1.5;color:var(--ink-dim)}',
+      '#bagpanel .bp-fx{font-size:12px;color:var(--ember);margin-top:5px}',
+      '#bagpanel .bp-use{margin-top:9px;font:600 13px var(--font-ui);color:#1b1410;background:var(--ember);border:0;border-radius:3px;padding:7px 16px;cursor:pointer}',
+      '#bagpanel .bp-empty{font-size:13px;color:var(--ink-dim);line-height:1.5}',
+      '#stage.talking #bagpanel,#stage.talking #bagbtn,#stage.talking .picklabel{display:none}',
+      '.picklabel{position:absolute;left:0;top:0;pointer-events:none;white-space:nowrap;font:600 12px var(--font-ui);letter-spacing:.06em;color:#f3efe4;',
+      '  padding:3px 8px;border-radius:2px;background:rgba(11,14,12,.55);text-shadow:0 1px 2px rgba(0,0,0,.8)}',
+      '#toasts{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}',
+      '#toasts .t{display:flex;align-items:center;gap:8px;font:600 13px var(--font-ui);color:var(--ink);padding:6px 12px;border-radius:3px;',
+      '  background:rgba(11,14,12,.66);border-left:2px solid var(--ember);animation:tIn .25s ease-out;transition:opacity .6s}',
+      '#toasts .t img{width:26px;height:26px}',
+      '@keyframes tIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}',
+      '#hud-hp .buff{margin-top:6px;font-size:11px;letter-spacing:.06em;color:#f3a95f}',
+      '#hud-hp .buff.cold{color:#9fdcff}',
+      '@media (max-width:560px){#bagpanel{top:auto;bottom:12px;transform:none;right:16px;left:16px;width:auto}#toasts{bottom:150px}}'].join('\n');
     document.head.appendChild(css);
-    var bar = document.createElement('div'); bar.id = 'itembar'; bar.className = 'panel'; bar.hidden = true;
-    bar.innerHTML = WEAPONS.map(function (w, i) { return '<button type="button"><kbd>' + (i + 1) + '</kbd><span>' + w.name + '</span></button>'; }).join('');
-    bar.querySelectorAll('button').forEach(function (b, i) { b.addEventListener('click', function (e) { e.stopPropagation(); hold(i); canvas.focus(); }); });
-    stage.appendChild(bar);
-    INV.bar = bar;
-    window.addEventListener('keydown', function (e) {
-      var k = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
-      if (k == null || !started || talk.active) return;
-      e.preventDefault(); hold(k);
+    var btn = document.createElement('button'); btn.type = 'button'; btn.id = 'bagbtn'; btn.className = 'panel'; btn.hidden = true;
+    btn.innerHTML = '<span>가방</span><kbd>I</kbd><span class="held"></span>';
+    var panel = document.createElement('div'); panel.id = 'bagpanel'; panel.className = 'panel'; panel.hidden = true;
+    panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', '가방');
+    panel.innerHTML = '<div class="bp-head"><span class="bp-title">가방</span><button type="button" class="bp-x">닫기 <kbd>I</kbd></button></div>' +
+      '<div class="bp-sec">손에 들 것</div><div class="bp-hands"></div><div class="bp-sec">소지품</div><div class="bp-grid"></div><div class="bp-detail"></div>';
+    var toasts = document.createElement('div'); toasts.id = 'toasts';
+    stage.appendChild(btn); stage.appendChild(panel); stage.appendChild(toasts);
+    var stop = function (e) { e.stopPropagation(); };
+    ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach(function (ev) { panel.addEventListener(ev, stop); btn.addEventListener(ev, stop); });
+    btn.addEventListener('click', function () { toggleBag(); });
+    panel.querySelector('.bp-x').addEventListener('click', function () { toggleBag(false); });
+    panel.addEventListener('click', function (e) {
+      var s = e.target.closest('[data-hand]');
+      if (s) { hold(+s.dataset.hand); return; }
+      s = e.target.closest('[data-item]');
+      if (s) { PICK.sel = s.dataset.item; renderBag(); return; }
+      if (e.target.closest('.bp-use') && PICK.sel) useItem(PICK.sel);
     });
+    window.addEventListener('keydown', function (e) {
+      if (!started || talk.active) return;
+      if (e.code === 'KeyI' || e.code === 'KeyB') { e.preventDefault(); toggleBag(); }
+      else if (e.code === 'Escape' && !panel.hidden) { e.preventDefault(); toggleBag(false); }
+    });
+    PICK.ui = { btn: btn, panel: panel, toasts: toasts };
   })();
+  function toggleBag(open) {
+    var p = PICK.ui.panel;
+    if (!INV.bag) { toast('아직 가방이 없다  ·  마을 시장의 마르타를 찾아가자'); return; }
+    p.hidden = open == null ? !p.hidden : !open;
+    if (!p.hidden) renderBag();
+    else canvas.focus();
+  }
+  function toast(text, icon) {
+    var t = document.createElement('div'); t.className = 't';
+    t.innerHTML = (icon ? '<img alt="" src="' + icon + '">' : '') + '<span></span>';
+    t.lastChild.textContent = text;
+    PICK.ui.toasts.appendChild(t);
+    while (PICK.ui.toasts.children.length > 4) PICK.ui.toasts.firstChild.remove();
+    setTimeout(function () { t.style.opacity = '0'; }, 2600);
+    setTimeout(function () { t.remove(); }, 3300);
+  }
+  function renderBag() {
+    if (!PICK.ui) return;
+    var ui = PICK.ui, W = WEAPONS[INV.held] || WEAPONS[0];
+    ui.btn.hidden = !INV.bag;
+    ui.btn.querySelector('.held').textContent = '· ' + W.name;
+    if (ui.panel.hidden) return;
+    ui.panel.querySelector('.bp-hands').innerHTML = WEAPONS.map(function (w, i) {
+      var ic = PICK.icons[w.node];
+      return '<button type="button" class="slot' + (i === INV.held ? ' on' : '') + '" data-hand="' + i + '"' + (i > 0 && !INV.weapons ? ' disabled' : '') + '>' +
+        '<kbd>' + (i + 1) + '</kbd>' + (ic ? '<img alt="" src="' + ic + '">' : '') + '<span>' + w.name + '</span></button>';
+    }).join('');
+    var cells = PICK.order.map(function (k) {
+      var ic = PICK.icons[k];
+      return '<button type="button" class="slot' + (PICK.sel === k ? ' on' : '') + '" data-item="' + k + '" title="' + ITEMS[k].name + '">' +
+        (ic ? '<img alt="" src="' + ic + '">' : '<span>' + ITEMS[k].name + '</span>') + '<span class="n">' + PICK.bag[k] + '</span></button>';
+    });
+    for (var e = cells.length; e < 12; e++) cells.push('<div class="slot empty"></div>');
+    ui.panel.querySelector('.bp-grid').innerHTML = cells.join('');
+    var det = ui.panel.querySelector('.bp-detail'), k = PICK.sel;
+    if (!k || !PICK.bag[k]) {
+      det.innerHTML = '<div class="bp-empty">' + (PICK.order.length ? '물건을 골라 살펴본다.' : '아직 아무것도 없다. 열매를 흔들어 떨구고, 나무를 베고, 바위를 깨고, 괴물을 쓰러뜨려 얻는다.') + '</div>';
+      return;
+    }
+    var D = ITEMS[k], e2 = D.food || D.use, fx = [];
+    if (e2 && e2.hp) fx.push('체력 +' + e2.hp);
+    if (e2 && e2.atk) fx.push('공격력 +' + Math.round(e2.atk * 100) + '% · ' + e2.t + '초');
+    det.innerHTML = '<div class="bp-name"></div><div class="bp-note"></div>' + (fx.length ? '<div class="bp-fx">' + fx.join('  ·  ') + '</div>' : '') +
+      (e2 ? '<button type="button" class="bp-use">' + (D.food ? '먹기' : D.verb) + '</button>' : '');
+    det.querySelector('.bp-name').textContent = D.name + '  ×' + PICK.bag[k];
+    det.querySelector('.bp-note').textContent = D.note;
+  }
+  function updateBuffHud() {
+    var el = $('hud-buff');
+    if (!el) return;
+    var b = PICK.buff;
+    el.hidden = !b;
+    if (b) { el.textContent = (b.cold ? '냉기 ' : '힘 ') + '공격력 +' + Math.round(b.atk * 100) + '%  ·  ' + Math.ceil(b.until - clockNow) + '초'; el.classList.toggle('cold', !!b.cold); }
+  }
 
   // ---------------------------------------------------------------- HUD: health, area banner
   var HUD = (function () {
@@ -2156,7 +2614,7 @@
       '@media (max-width:560px){#area .name{font-size:25px}#area{bottom:170px}}'].join('\n');
     document.head.appendChild(css);
     var hp = document.createElement('div'); hp.id = 'hud-hp'; hp.className = 'panel'; hp.hidden = true;
-    hp.innerHTML = '<div class="lbl"><span>로빈</span><span id="hud-hp-n">100</span></div><div class="bar"><div class="fill" id="hud-hp-f"></div></div>';
+    hp.innerHTML = '<div class="lbl"><span>로빈</span><span id="hud-hp-n">100</span></div><div class="bar"><div class="fill" id="hud-hp-f"></div></div><div class="buff" id="hud-buff" hidden></div>';
     var hurt = document.createElement('div'); hurt.id = 'hud-hurt';
     var area = document.createElement('div'); area.id = 'area'; area.setAttribute('aria-live', 'polite');
     area.innerHTML = '<div class="name"></div><div class="rule"></div><div class="sub"></div>';
@@ -2202,8 +2660,11 @@
     var getJson = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }); };
     var whenLand = function (fn) { (function wait() { if (LAND.ready) fn(); else setTimeout(wait, 200); })(); };
     fetchGz('items.b64.txt').then(parseBytes).then(function (g) {
-      (function wait() { if (hero.root && HERO_REST) attachItems(g); else setTimeout(wait, 200); })();
+      (function wait() { if (hero.root && HERO_REST) { attachItems(g); PICK.items = g; makeIcons(); } else setTimeout(wait, 200); })();
     }).catch(function (err) { console.error('items', err); });
+    Promise.all([fetchGz('pickups_hq.b64.txt').then(parseBytes), fetchGz('pickups_food.b64.txt').then(parseBytes)]).then(function (r) {
+      whenLand(function () { setupPickups(r[0], r[1]); });
+    }).catch(function (err) { console.error('pickups', err); });
     Promise.all([fetchGz('castle.b64.txt').then(parseBytes), getJson('castle.json')]).then(function (r) {
       whenLand(function () { buildCastle(r[0], r[1]); });
     }).catch(function (err) { console.error('castle', err); });
@@ -2330,7 +2791,8 @@
                         groundAt: groundAt, flags: flags, render: function () { renderer.render(scene, camera); },
                         summon: function () { foundCount = 3; found[0] = found[1] = found[2] = true; finished = true; summon(); },
                         village: function () { return VILLAGE; }, allFound: function () { foundCount = 3; found[0] = found[1] = found[2] = true; }, zone: function () { return zone; }, interact: interact,
-                        scene: scene, camera: camera, begin: begin, monsters: function () { return MONSTERS; }, combat: COMBAT, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
+                        scene: scene, camera: camera, begin: begin, monsters: function () { return MONSTERS; }, combat: COMBAT, land: LAND, boxes: function () { return BOXES; },
+    pick: PICK, res: RES, inv: INV, spawnPickup: spawnPickup, useItem: useItem, toggleBag: toggleBag, hold: hold, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
       frame();
     });
   }).catch(function (err) { console.error(err); fail('유적지를 불러오지 못했습니다: ' + (err && err.message ? err.message : err)); });
