@@ -47,7 +47,7 @@ scripts = "\n".join([
     '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>',
     '<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>',
     '<script>window.MEGALITH_GROUND = %s;</script>' % compact(json.loads((SRC / "ground" / "ground.json").read_text(encoding="utf-8"))),
-    '<script id="hero-glb" type="application/octet-stream">%s</script>' % base64.b64encode((LIVE / "hero.glb").read_bytes()).decode("ascii"),
+    '<script id="hero-glb" type="application/octet-stream">%s</script>' % base64.b64encode((LIVE / "hero_plus.glb").read_bytes()).decode("ascii"),
     '<script id="world-json" type="application/json">%s</script>' % compact(json.loads((LIVE / "world.json").read_text(encoding="utf-8"))),
     '<script id="story-json" type="application/json">%s</script>' % compact(story),
     '<script>window.MEGALITH_TEX = %s;</script>' % compact(json.loads((SRC / "tex" / "tex.json").read_text(encoding="utf-8"))),
@@ -91,6 +91,7 @@ shutil.copyfile(HQ / "props.json", DIST / "props.json")
 for name in ("trees_broad", "trees_fir", "props_hard", "props_soft", "castle"):
     (DIST / f"{name}.b64.txt").write_text(packed(HQ / f"{name}.glb"), encoding="ascii")
 shutil.copyfile(HQ / "castle.json", DIST / "castle.json")
+(DIST / "items.b64.txt").write_text(packed(ROOT / "assets_src" / "items" / "items_hq.glb"), encoding="ascii")
 for name in ("horror", "golem"):
     (DIST / f"{name}.b64.txt").write_text(packed(ROOT / "assets_src" / "monsters" / f"{name}.glb"), encoding="ascii")
 for f in sorted(DIST.iterdir()):

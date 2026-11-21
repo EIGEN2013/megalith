@@ -595,7 +595,7 @@
     hero.mixer = new THREE.AnimationMixer(hero.root);
     gltf.animations.forEach(function (clip) {
       var action = hero.mixer.clipAction(clip);
-      if (['Jump', 'DoubleJump', 'Attack', 'WakeUp'].indexOf(clip.name) >= 0) {
+      if (['Jump', 'DoubleJump', 'Attack', 'WakeUp', 'Slash'].indexOf(clip.name) >= 0) {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
       }
@@ -603,7 +603,7 @@
     });
     hero.mixer.addEventListener('finished', function (e) {
       var name = e.action.getClip().name;
-      if (name === 'Attack') hero.attacking = false;
+      if (name === 'Attack' || name === 'Slash') hero.attacking = false;
       if (name === 'DoubleJump') hero.flipping = false;
     });
   }
@@ -675,7 +675,7 @@
     } else if (pt.npc) {
       var n = pt.npc;
       n.talking = true;
-      say(n.met ? n.def.again : n.def.lines, function () { n.talking = false; n.met = true; });
+      say(n.met ? n.def.again : n.def.lines, function () { n.talking = false; n.met = true; npcGifts(n); });
     } else say(entry.lines);
   }
   var nearest = null;
@@ -729,7 +729,8 @@
       else if (pressed.jump) {
         if (hero.onFloor) { hero.jumpsUsed = 1; v.y = JUMP_VELOCITY; hero.onFloor = false; hero.attacking = false; replay('Jump', 0.08); }
         else if (hero.jumpsUsed < MAX_JUMPS) { hero.jumpsUsed = MAX_JUMPS; v.y = DOUBLE_JUMP_VELOCITY; hero.flipping = true; replay('DoubleJump', 0.05); }
-      } else if (pressed.attack && hero.onFloor && !hero.attacking) { hero.attacking = true; replay('Attack', BLEND, ATTACK_SPEED); COMBAT.strike = 0.24; }
+      } else if (pressed.attack && hero.onFloor && !hero.attacking) { hero.attacking = true;
+        if (INV.held && hero.actions.Slash) { replay('Slash', 0.08, 1.15); COMBAT.strike = 0.26; } else { replay('Attack', BLEND, ATTACK_SPEED); COMBAT.strike = 0.24; } }
     }
     pressed.jump = pressed.attack = pressed.interact = false;
 
@@ -1859,9 +1860,10 @@
       var m = MONSTERS[i];
       if (m.state === 'dead') continue;
       var dx = m.root.position.x - hero.pos.x, dz = m.root.position.z - hero.pos.z, d = Math.hypot(dx, dz);
-      if (d > 2.0 + m.radius || (dx * fx + dz * fz) / Math.max(d, 1e-3) < 0.15) continue;
+      var W = WEAPONS[INV.held] || WEAPONS[0];
+      if (d > W.reach + m.radius || (dx * fx + dz * fz) / Math.max(d, 1e-3) < W.arc) continue;
       any = true;
-      var dmg = 20 + Math.random() * 8;
+      var dmg = W.dmg * (0.85 + Math.random() * 0.3);
       m.hp -= dmg;
       m.flash = 0.18; m.state = m.hp > 0 ? 'hurt' : 'dead'; m.timer = 0.35;
       m.knock.set(dx / d * 5.5, dz / d * 5.5);
@@ -1869,7 +1871,7 @@
       _wp.copy(m.root.position); _wp.y += m.kind === 'golem' ? 1.6 : 1.0;
       burst(_wp, m.K.blood, 16, 3);
       if (m.hp > 0) {
-        if (Math.random() < (m.kind === 'golem' ? 0.45 : 0.6)) {                 // tear off a limb
+        if (Math.random() < W.sever * (m.kind === 'golem' ? 0.75 : 1)) {        // tear off a limb
           var pool = m.K.limbs.filter(function (n) { return n !== 'head' && !m.severed[n]; });
           if (pool.length) sever(m, pool[Math.floor(Math.random() * pool.length)], _hitV);
         }
@@ -2052,6 +2054,87 @@
     }
   }
 
+  // ---------------------------------------------------------------- the bag, the sword and the axe
+  // Marta the merchant gives Robin a satchel (it hangs at his left hip and opens the item bar);
+  // Oswin the guard then arms him with a sword and an axe. Keys 1-3 (or the bar) pick fist, sword, axe;
+  // the chosen weapon sits in his right hand and swings with the Slash clip.
+  var WEAPONS = [{ name: '주먹', dmg: 24, reach: 2.0, arc: 0.15, sever: 0.45 },
+                 { name: '칼', dmg: 40, reach: 2.6, arc: 0.0, sever: 0.75, node: 'sword' },
+                 { name: '도끼', dmg: 52, reach: 2.4, arc: 0.1, sever: 0.9, node: 'axe' }];
+  var INV = { bag: false, weapons: false, held: 0, items: {}, bar: null };
+  function attachItems(gltf) {
+    // find each item's place on the bones by attaching it to a rest-pose copy of Robin, then hang that on the real one
+    var rest = THREE.SkeletonUtils.clone(HERO_GLTF.scene), rb = {}, hb = {};
+    rest.position.set(0, 0, 0); rest.rotation.set(0, 0, 0); rest.scale.set(1, 1, 1);
+    rest.traverse(function (o) { if (o.isBone) { rb[o.name] = o; var r = HERO_REST[o.name]; if (r) { o.position.copy(r[0]); o.quaternion.copy(r[1]); o.scale.copy(r[2]); } } });
+    rest.updateMatrixWorld(true);
+    hero.root.traverse(function (o) { if (o.isBone) hb[o.name] = o; });
+    gltf.scene.updateMatrixWorld(true);
+    ['sword', 'axe', 'bag'].forEach(function (name) {
+      var node = gltf.scene.getObjectByName(name), boneName = name === 'bag' ? 'Hips' : 'RightHand';
+      if (!node || !rb[boneName] || !hb[boneName]) return;
+      var local = new THREE.Matrix4().copy(rb[boneName].matrixWorld).invert().multiply(node.matrixWorld);
+      var piece = node.clone(true);
+      piece.matrixAutoUpdate = true;
+      local.decompose(piece.position, piece.quaternion, piece.scale);
+      piece.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+      piece.visible = false;
+      hb[boneName].add(piece);
+      INV.items[name] = piece;
+    });
+    refreshItems();
+  }
+  function refreshItems() {
+    if (INV.items.bag) INV.items.bag.visible = INV.bag;
+    if (INV.items.sword) INV.items.sword.visible = INV.held === 1;
+    if (INV.items.axe) INV.items.axe.visible = INV.held === 2;
+    if (!INV.bar) return;
+    INV.bar.hidden = !INV.bag;
+    INV.bar.querySelectorAll('button').forEach(function (b, i) {
+      b.classList.toggle('on', i === INV.held);
+      b.disabled = i > 0 && !INV.weapons;
+    });
+  }
+  function hold(i) {
+    if (!INV.bag || (i > 0 && !INV.weapons) || hero.attacking) return;
+    INV.held = i; refreshItems();
+  }
+  function npcGifts(n) {
+    var id = n.id;
+    if (id === 'npc_marta' && !INV.bag) {
+      say([{ who: id, text: '그 차림으로 어딜 가려고요? 자, 이 가죽 가방 하나 가져가요. 쓸 만한 걸 넣고 다녀야지.' }], function () {
+        INV.bag = true; refreshItems(); showArea('가죽 가방을 얻었다', '숫자 키 1 · 2 · 3 으로 손에 들 것을 고른다', true);
+      });
+    } else if (id === 'npc_oswin' && !INV.weapons) {
+      if (!INV.bag) { say([{ who: id, text: '맨손으로 들판에 나가겠다고? 시장의 마르타에게 먼저 가방부터 얻어 오시오. 무기는 그다음이오.' }]); return; }
+      say([{ who: id, text: '가방이 있군. 좋소. 이 칼과 도끼를 가져가시오. 들판의 괴물들은 칼로 베고, 단단한 골렘은 도끼로 쪼개시오.' }], function () {
+        INV.weapons = true; INV.held = 1; refreshItems(); showArea('칼과 도끼를 얻었다', '2 칼 · 3 도끼 · 1 맨손', true);
+      });
+    }
+  }
+  (function itemBar() {
+    var css = document.createElement('style');
+    css.textContent = [
+      '#itembar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:8px;padding:8px;pointer-events:auto}',
+      '#itembar button{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;',
+      '  font:600 13px var(--font-ui);color:var(--ink);background:rgba(243,239,228,.06);border:1px solid var(--panel-line);border-radius:3px}',
+      '#itembar button kbd{font-size:10px;padding:2px 5px}',
+      '#itembar button.on{border-color:var(--ember);background:rgba(243,169,95,.16);box-shadow:inset 0 0 0 1px var(--ember)}',
+      '#itembar button:disabled{opacity:.35;cursor:default}',
+      '#stage.talking #itembar{display:none}'].join('\n');
+    document.head.appendChild(css);
+    var bar = document.createElement('div'); bar.id = 'itembar'; bar.className = 'panel'; bar.hidden = true;
+    bar.innerHTML = WEAPONS.map(function (w, i) { return '<button type="button"><kbd>' + (i + 1) + '</kbd><span>' + w.name + '</span></button>'; }).join('');
+    bar.querySelectorAll('button').forEach(function (b, i) { b.addEventListener('click', function (e) { e.stopPropagation(); hold(i); canvas.focus(); }); });
+    stage.appendChild(bar);
+    INV.bar = bar;
+    window.addEventListener('keydown', function (e) {
+      var k = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
+      if (k == null || !started || talk.active) return;
+      e.preventDefault(); hold(k);
+    });
+  })();
+
   // ---------------------------------------------------------------- HUD: health, area banner
   var HUD = (function () {
     var css = document.createElement('style');
@@ -2118,6 +2201,9 @@
   function loadCastleAndMonsters() {
     var getJson = function (u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }); };
     var whenLand = function (fn) { (function wait() { if (LAND.ready) fn(); else setTimeout(wait, 200); })(); };
+    fetchGz('items.b64.txt').then(parseBytes).then(function (g) {
+      (function wait() { if (hero.root && HERO_REST) attachItems(g); else setTimeout(wait, 200); })();
+    }).catch(function (err) { console.error('items', err); });
     Promise.all([fetchGz('castle.b64.txt').then(parseBytes), getJson('castle.json')]).then(function (r) {
       whenLand(function () { buildCastle(r[0], r[1]); });
     }).catch(function (err) { console.error('castle', err); });
