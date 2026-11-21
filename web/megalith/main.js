@@ -76,8 +76,27 @@
 
   // ---------------------------------------------------------------- renderer + sky + light
   var canvas = $('view'), stage = $('stage');
-  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });   // the discrete GPU on laptops
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // LITE: a lighter setting for GPUs the full scene overwhelms (chosen by ?lite=1, or automatically after the
+  // graphics driver had to be reset while this game was running)
+  var LITE = /[?&]lite=1/.test(location.search);
+  try { if (sessionStorage.getItem('megalith-gpu-reset')) LITE = true; } catch (e) {}
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: !LITE, powerPreference: 'high-performance' });   // the discrete GPU on laptops
+  var MAX_PIXELS = LITE ? 2.2e6 : 3.7e6;     // never shade more pixels than this per frame, however dense the screen
+  function pixelRatio(w, h) { return Math.max(0.75, Math.min(window.devicePixelRatio || 1, LITE ? 1 : 2, Math.sqrt(MAX_PIXELS / Math.max(1, w * h)))); }
+  renderer.setPixelRatio(pixelRatio(stage.clientWidth, stage.clientHeight));
+  // If the driver resets (a frame took too long), stop drawing instead of restoring and overloading it again:
+  // that loop is what blacks the whole screen out every few seconds. Offer a lighter restart.
+  var GPU_LOST = false;
+  canvas.addEventListener('webglcontextlost', function (e) {
+    GPU_LOST = true;
+    try { sessionStorage.setItem('megalith-gpu-reset', '1'); } catch (err) {}
+    var box = document.createElement('div');
+    box.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;background:#0b0e0c;color:#f3efe4;font:15px/1.6 sans-serif;text-align:center;padding:16px;z-index:50';
+    box.innerHTML = '<div><p style="margin:0 0 12px">그래픽 카드가 이 장면을 감당하지 못해 화면을 멈췄습니다.</p>' +
+      '<button type="button" style="font:600 15px sans-serif;padding:10px 18px;border-radius:4px;border:0;background:#f3a95f;color:#1b1410;cursor:pointer">가벼운 그래픽으로 다시 시작</button></div>';
+    box.querySelector('button').addEventListener('click', function () { location.search = '?lite=1'; });
+    stage.appendChild(box);
+  }, false);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -205,7 +224,8 @@
   scene.add(hemi);
   var sun = new THREE.DirectionalLight(srgb(0xffe6c4), 1.4);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(renderer.capabilities.maxTextureSize >= 4096 ? 4096 : 2048, renderer.capabilities.maxTextureSize >= 4096 ? 4096 : 2048);
+  var SHADOW_MAP = !LITE && renderer.capabilities.maxTextureSize >= 4096 ? 4096 : 2048;
+  sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
   sun.shadow.camera.left = -22; sun.shadow.camera.right = 22;
   sun.shadow.camera.top = 22; sun.shadow.camera.bottom = -22;
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 80;
@@ -834,6 +854,7 @@
   function resize() {
     var w = stage.clientWidth, h = stage.clientHeight;
     if (!w || !h) return;
+    renderer.setPixelRatio(pixelRatio(w, h));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -870,6 +891,7 @@
     camera.position.set(cx, Math.max(groundAt(cx, cz) + 0.35, focus.y + Math.sin(cam.pitch) * dist), cz);
     clampCameraToRoom();
     updateRooms();
+    updateFarChunks();
     camera.lookAt(focus);
     if (doorFx.shake && zone === 'forest') { camera.position.x += (Math.random() - 0.5) * doorFx.shake; camera.position.y += (Math.random() - 0.5) * doorFx.shake; }
     sky.position.copy(camera.position);
@@ -909,6 +931,7 @@
   // resolution adapts only when the frame rate falls: full sharpness whenever the GPU keeps up.
   // Full resolution and fresh shadows every frame; speed comes from culling, LOD and precompiled shaders.
   function frame() {
+    if (GPU_LOST) return;
     requestAnimationFrame(frame);
     update(Math.min(clock.getDelta(), 0.05));
     renderer.render(scene, camera);
@@ -982,6 +1005,105 @@
     }
     return false;
   }
+  var FAR_CHUNKS = [];
+  function updateFarChunks() {
+    // small pieces (cobbles, wall stones): the full shape near Robin, a coarse one further off, nothing past their draw distance
+    var p = camera.position;
+    for (var i = 0; i < FAR_CHUNKS.length; i++) {
+      var o = FAR_CHUNKS[i], s = o.geometry.boundingSphere, u = o.userData;
+      var d = Math.hypot(s.center.x - p.x, s.center.z - p.z) - s.radius;
+      o.visible = d < (u.lo ? u.near : u.far);
+      if (u.lo) u.lo.visible = !o.visible && d < u.far;
+    }
+  }
+  function clusterLod(geo, cells) {
+    // a coarse copy of a small mesh: vertices snapped together on a grid over its bounds, collapsed triangles dropped
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox, pos = geo.getAttribute('position'), nor = geo.getAttribute('normal'), colA = geo.getAttribute('color');
+    var sx = Math.max(1e-6, bb.max.x - bb.min.x), sy = Math.max(1e-6, bb.max.y - bb.min.y), sz = Math.max(1e-6, bb.max.z - bb.min.z);
+    var map = new Int32Array(pos.count), keys = {}, P = [], N = [], C = [], cnt = [], rep = [];
+    for (var i = 0; i < pos.count; i++) {
+      var x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      var k = Math.min(cells - 1, Math.floor((x - bb.min.x) / sx * cells)) + ',' + Math.min(cells - 1, Math.floor((y - bb.min.y) / sy * cells)) + ',' + Math.min(cells - 1, Math.floor((z - bb.min.z) / sz * cells));
+      var j = keys[k];
+      if (j === undefined) { j = keys[k] = cnt.length; cnt.push(0); rep.push(i); P.push(0, 0, 0); N.push(0, 0, 0); }
+      map[i] = j; cnt[j]++;
+      P[j * 3] += x; P[j * 3 + 1] += y; P[j * 3 + 2] += z;
+      if (nor) { N[j * 3] += nor.getX(i); N[j * 3 + 1] += nor.getY(i); N[j * 3 + 2] += nor.getZ(i); }
+    }
+    var n = cnt.length, g = new THREE.BufferGeometry(), pa = new Float32Array(n * 3), na = new Float32Array(n * 3);
+    for (var q = 0; q < n; q++) {
+      pa[q * 3] = P[q * 3] / cnt[q]; pa[q * 3 + 1] = P[q * 3 + 1] / cnt[q]; pa[q * 3 + 2] = P[q * 3 + 2] / cnt[q];
+      var l = Math.hypot(N[q * 3], N[q * 3 + 1], N[q * 3 + 2]) || 1;
+      na[q * 3] = N[q * 3] / l; na[q * 3 + 1] = N[q * 3 + 1] / l; na[q * 3 + 2] = N[q * 3 + 2] / l;
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pa, 3));
+    if (nor) g.setAttribute('normal', new THREE.BufferAttribute(na, 3));
+    if (colA) {
+      var cs = colA.itemSize, ca = new colA.array.constructor(n * cs);
+      for (var r = 0; r < n; r++) { ca[r * cs] = colA.getX(rep[r]); ca[r * cs + 1] = colA.getY(rep[r]); ca[r * cs + 2] = colA.getZ(rep[r]); if (cs > 3) ca[r * cs + 3] = colA.getW(rep[r]); }
+      g.setAttribute('color', new THREE.BufferAttribute(ca, cs, colA.normalized));
+    }
+    var idx = geo.getIndex(), tri = [], m = idx ? idx.count : pos.count;
+    for (var t = 0; t < m; t += 3) {
+      var a = map[idx ? idx.getX(t) : t], b = map[idx ? idx.getX(t + 1) : t + 1], c = map[idx ? idx.getX(t + 2) : t + 2];
+      if (a !== b && b !== c && a !== c) tri.push(a, b, c);
+    }
+    g.setIndex(tri);
+    g.computeBoundingSphere();
+    return g;
+  }
+  function chunkedInstances(group, name, geo, mat, f, offset, count, castShadow, far, near, lodCells) {
+    // Instances in 24 m cells, each its own InstancedMesh with true bounds: the camera skips cells out of view,
+    // and the sun's shadow pass draws only the cells near Robin (not every slate and stone in the village).
+    var cell = near ? 12 : 24, buckets = {}, mtx = new THREE.Matrix4(), col = new THREE.Color();
+    var lod = near ? clusterLod(geo, lodCells || 3) : null;
+    for (var i = 0; i < count; i++) {
+      var b = (offset + i) * 15, key = Math.floor(f[b + 3] / cell) + ',' + Math.floor(f[b + 11] / cell);
+      (buckets[key] = buckets[key] || []).push(b);
+    }
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    var gr = geo.boundingSphere.radius + geo.boundingSphere.center.length();
+    Object.keys(buckets).forEach(function (key) {
+      var ids = buckets[key], view = new THREE.BufferGeometry();
+      for (var an in geo.attributes) view.setAttribute(an, geo.attributes[an]);
+      view.setIndex(geo.getIndex());
+      var im = new THREE.InstancedMesh(view, mat, ids.length), c = new THREE.Vector3(), maxS = 0;
+      ids.forEach(function (b, k) {
+        mtx.set(f[b], f[b + 1], f[b + 2], f[b + 3], f[b + 4], f[b + 5], f[b + 6], f[b + 7], f[b + 8], f[b + 9], f[b + 10], f[b + 11], 0, 0, 0, 1);
+        im.setMatrixAt(k, mtx);
+        col.setRGB(f[b + 12], f[b + 13], f[b + 14]);
+        im.setColorAt(k, col);
+        c.x += f[b + 3]; c.y += f[b + 7]; c.z += f[b + 11];
+        for (var a = 0; a < 3; a++) maxS = Math.max(maxS, Math.hypot(f[b + a], f[b + 4 + a], f[b + 8 + a]));
+      });
+      c.divideScalar(ids.length);
+      var rad = 0;
+      ids.forEach(function (b) { rad = Math.max(rad, Math.hypot(f[b + 3] - c.x, f[b + 7] - c.y, f[b + 11] - c.z)); });
+      view.boundingSphere = new THREE.Sphere(c, rad + gr * maxS);
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      im.frustumCulled = true; im.castShadow = castShadow; im.receiveShadow = true;
+      im.name = name;
+      if (far) {
+        im.userData.far = LITE ? far * 0.7 : far;
+        if (near && lod) {
+          var lv = new THREE.BufferGeometry();
+          for (var ln in lod.attributes) lv.setAttribute(ln, lod.attributes[ln]);
+          lv.setIndex(lod.getIndex());
+          lv.boundingSphere = view.boundingSphere;
+          var lo = new THREE.InstancedMesh(lv, mat, ids.length);
+          lo.instanceMatrix = im.instanceMatrix; lo.instanceColor = im.instanceColor;   // the same instances, drawn coarse
+          lo.frustumCulled = true; lo.castShadow = castShadow; lo.receiveShadow = true; lo.visible = false;
+          lo.name = name + '_lod';
+          group.add(lo);
+          im.userData.lo = lo; im.userData.near = LITE ? near * 0.7 : near;
+        }
+        FAR_CHUNKS.push(im);
+      }
+      group.add(im);
+    });
+  }
   function buildVillageExt(V, protos, ext, xd) {
     // The enlarged village (tools/hq_village.py): new buildings in the village's own materials, the new roofs laid
     // with the village's slate pieces, stones and wall segments as instances, the wall's colliders and outline.
@@ -993,17 +1115,19 @@
       if (!o.isMesh) return;
       if (/^kit_/.test(o.name)) kit[o.name] = o; else add.push(o);
     });
+    V.roomMeshes = {};
     add.forEach(function (o) {
       var mn = o.material.name, m = mats[mn];
       linearColors(o.geometry);
       if (!m) { m = o.material; m.vertexColors = true; m.metalness = 0; if (mn !== 'glass') detailFor(m); mats[mn] = m; }
       o.material = m;
       o.castShadow = mn !== 'glass'; o.receiveShadow = true;
+      var rm = /^room_(house_[a-z])(?:_|$)/.exec(o.name);
+      if (rm) { o.castShadow = false; o.visible = false; (V.roomMeshes[rm[1]] = V.roomMeshes[rm[1]] || []).push(o); }   // drawn only while Robin is in it
       var mw = o.matrixWorld.clone();
       group.add(o);
       mw.decompose(o.position, o.quaternion, o.scale);
     });
-    var mtx = new THREE.Matrix4(), col = new THREE.Color();
     xd.instances.forEach(function (gi) {
       var src = kit[gi.proto] || protos[gi.proto];
       if (!src) return;
@@ -1012,19 +1136,9 @@
       var bin = atob(gi.f32), buf = new ArrayBuffer(bin.length), u8 = new Uint8Array(buf);
       for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
       var f = new Float32Array(buf);
-      var im = new THREE.InstancedMesh(geo, mat, gi.count);
-      for (var k = 0; k < gi.count; k++) {
-        var b = k * 15;
-        mtx.set(f[b], f[b + 1], f[b + 2], f[b + 3], f[b + 4], f[b + 5], f[b + 6], f[b + 7], f[b + 8], f[b + 9], f[b + 10], f[b + 11], 0, 0, 0, 1);
-        im.setMatrixAt(k, mtx);
-        col.setRGB(f[b + 12], f[b + 13], f[b + 14]);
-        im.setColorAt(k, col);
-      }
-      im.instanceMatrix.needsUpdate = true;
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      im.frustumCulled = false; im.castShadow = true; im.receiveShadow = true;
-      im.name = 'ext_' + gi.proto;
-      group.add(im);
+      // building stones need no shadow pass of their own (the walls behind them cast it)
+      var block = /^kit_block/.test(gi.proto);
+      chunkedInstances(group, 'ext_' + gi.proto, geo, mat, f, 0, gi.count, !block, block ? 70 : 0, block ? 14 : 0);
     });
     V.boxes = V.boxes.concat(boxesOf(xd.colliders));
     V.wall = xd.wall;
@@ -1039,8 +1153,8 @@
       });
       return room;
     });
-    // three lights shared out to the nearest lamps (ten rooms' worth of lights would cost every surface in view)
-    V.lampPool = [0, 1, 2].map(function () { var pl = new THREE.PointLight(0xffffff, 0, 10, 2); group.add(pl); return pl; });
+    // two lights (one in lite mode) shared out to the nearest lamps (ten rooms' worth of lights would cost every surface in view)
+    V.lampPool = (LITE ? [0] : [0, 1]).map(function () { var pl = new THREE.PointLight(0xffffff, 0, 10, 2); group.add(pl); return pl; });
   }
   function roomAt(x, y, z, margin) {
     var rooms = VILLAGE && VILLAGE.rooms;
@@ -1063,6 +1177,14 @@
   function updateRooms() {
     // lamps flicker, and only burn while Robin is near enough to see them (lights far off cost for nothing)
     if (zone !== 'village' || !VILLAGE || !VILLAGE.rooms || !VILLAGE.lampPool) return;
+    if (VILLAGE.roomMeshes) VILLAGE.rooms.forEach(function (r) {
+      // the rooms under the old houses are drawn only while Robin stands in one
+      var ms = r.hidden && VILLAGE.roomMeshes[r.id];
+      if (!ms) return;
+      var l = toLocal(r, hero.pos.x, hero.pos.z);
+      var on = hero.pos.y < r.floor + 8 && Math.abs(l[0]) < r.hx + 3 && Math.abs(l[1]) < r.hz + 3;
+      if (ms[0].visible !== on) ms.forEach(function (o) { o.visible = on; });
+    });
     var near = [];
     VILLAGE.rooms.forEach(function (r) {
       r.lamps.forEach(function (L) {
@@ -1126,22 +1248,10 @@
       mat.vertexColors = true; mat.metalness = 0;
       if (gi.set === 'grass') mat.side = THREE.DoubleSide;
       else detailFor(mat);
-      var im = new THREE.InstancedMesh(geo, mat, gi.count);
-      for (var i = 0; i < gi.count; i++) {
-        var b = (gi.offset + i) * 15;
-        mtx.set(inst[b], inst[b + 1], inst[b + 2], inst[b + 3], inst[b + 4], inst[b + 5], inst[b + 6], inst[b + 7],
-                inst[b + 8], inst[b + 9], inst[b + 10], inst[b + 11], 0, 0, 0, 1);
-        im.setMatrixAt(i, mtx);
-        col.setRGB(inst[b + 12], inst[b + 13], inst[b + 14]);
-        im.setColorAt(i, col);
-      }
-      im.instanceMatrix.needsUpdate = true;
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      im.frustumCulled = false;
-      im.castShadow = gi.set === 'slate' || gi.set === 'stone' || gi.set === 'ridge';
-      im.receiveShadow = true;
-      im.name = gi.mesh;
-      group.add(im);
+      chunkedInstances(group, gi.mesh, geo, mat, inst, gi.offset, gi.count,
+                       gi.set === 'slate' || gi.set === 'stone' || gi.set === 'ridge',
+                       gi.set === 'cobble' ? 45 : gi.set === 'stone' ? 70 : gi.set === 'fruit' ? 50 : 0,
+                       gi.set === 'cobble' || gi.set === 'stone' ? 14 : 0, gi.set === 'cobble' ? 2 : 3);
     });
     // standing stones out in the sea, cut from the same rock as the ones in the forest
     if (forestScene) {
@@ -1344,7 +1454,7 @@
     SUN_OFFSET.set(26, 15, -10);
     sun.shadow.camera.left = -24; sun.shadow.camera.right = 24; sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24;
     sun.shadow.camera.far = 90; sun.shadow.camera.updateProjectionMatrix();
-    if (renderer.capabilities.maxTextureSize >= 4096) { sun.shadow.mapSize.set(4096, 4096); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+    if (SHADOW_MAP >= 4096) { sun.shadow.mapSize.set(4096, 4096); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
     hero.pos.set(d.spawn.x, VILLAGE.groundAt(d.spawn.x, d.spawn.z), d.spawn.z);
     hero.vel.set(0, 0, 0); hero.heading = d.spawn.heading; hero.onFloor = true;
     cam.yaw = 0; cam.pitch = 0.28; cam.goal = cam.distance = 6.2;
