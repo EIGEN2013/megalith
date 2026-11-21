@@ -642,7 +642,8 @@
     if (name === 'pulse') fx.pulse = 2.8;
   }
   function setObjective() {
-    if (zone === 'village') { $('objective').textContent = STORY.village.objective; return; }
+    if ($('questlist')) $('questlist').hidden = true;
+    if (zone === 'village') { $('objective').textContent = questObjective(); renderQuestList(); return; }
     var o = STORY.objective;
     $('objective').textContent = finished ? '메갈리스의 문이 열리려 한다' : foundCount === 0 ? o.start : foundCount < 3 ? o.progress.replace('{n}', foundCount) : o.done;
   }
@@ -674,9 +675,7 @@
       fx.pulse = 3;
       say(entry.lines_done, function () { finished = true; summon(); });
     } else if (pt.npc) {
-      var n = pt.npc;
-      n.talking = true;
-      say(n.met ? n.def.again : n.def.lines, function () { n.talking = false; n.met = true; npcGifts(n); });
+      talkTo(pt.npc);
     } else say(entry.lines);
   }
   var nearest = null;
@@ -1898,6 +1897,7 @@
         m.timer = 0;
         dropLoot(m);
         COMBAT.kills++;
+        setObjective();
         showArea(COMBAT.kills >= COMBAT.need ? '성으로 가는 다리가 열렸다' : '몬스터 처치  ' + COMBAT.kills + ' / ' + COMBAT.need,
                  COMBAT.kills >= COMBAT.need ? '서쪽 해안길 끝, 바다 위의 성으로' : (m.kind === 'golem' ? '얼음 골렘' : '촉수 괴물'), true);
       }
@@ -2112,18 +2112,97 @@
     if (!INV.bag || (i > 0 && !INV.weapons) || hero.attacking) return;
     INV.held = i; refreshItems();
   }
-  function npcGifts(n) {
+  function npcGifts(n, next) {
     var id = n.id;
+    next = next || function () {};
     if (id === 'npc_marta' && !INV.bag) {
-      say([{ who: id, text: '그 차림으로 어딜 가려고요? 자, 이 가죽 가방 하나 가져가요. 쓸 만한 걸 넣고 다녀야지.' }], function () {
-        INV.bag = true; refreshItems(); showArea('가죽 가방을 얻었다', 'I 키로 가방을 연다  ·  주운 것은 저절로 들어간다', true);
+      say([{ who: id, text: '자, 맨손으로 다니지 말고 이 가죽 가방 가져가요. 사과 두 알도 넣어 뒀어요. 주운 건 여기 넣고, 배고프면 꺼내 먹어요.' }], function () {
+        INV.bag = true; refreshItems(); addToBag('apple', 2);
+        showArea('가죽 가방을 얻었다', 'I 키로 가방을 연다  ·  주운 것은 저절로 들어간다', true);
+        next();
       });
     } else if (id === 'npc_oswin' && !INV.weapons) {
-      if (!INV.bag) { say([{ who: id, text: '맨손으로 들판에 나가겠다고? 시장의 마르타에게 먼저 가방부터 얻어 오시오. 무기는 그다음이오.' }]); return; }
+      if (!INV.bag) { say([{ who: id, text: '맨손으로 들판에 나가겠다고? 시장의 마르타에게 먼저 가방부터 얻어 오시오. 무기는 그다음이오.' }], next); return; }
       say([{ who: id, text: '가방이 있군. 좋소. 이 칼과 도끼를 가져가시오. 들판의 괴물들은 칼로 베고, 단단한 골렘은 도끼로 쪼개시오.' }], function () {
         INV.weapons = true; INV.held = 1; refreshItems(); showArea('칼과 도끼를 얻었다', '1 맨손 · 2 칼 · 3 도끼  ·  도끼로 나무를 베고 바위를 깬다', true);
+        next();
       });
+    } else if (id === 'npc_lina' && !QUEST.pears) {
+      if (!INV.bag) { say([{ who: id, text: '들판에 나갈 거면 챙겨 줄 게 있는데… 어머, 가방이 없네요. 시장의 마르타한테 가방부터 얻어 와요.' }], next); return; }
+      say([{ who: id, text: '들판에 나갈 거죠? 물푸레나무에서 딴 배 두 알이에요. 먹으면 한동안 팔에 힘이 붙어요.' }], function () {
+        QUEST.pears = true; addToBag('pear', 2);
+        next();
+      });
+    } else next();
+  }
+
+  // ---------------------------------------------------------------- the village quest
+  // Elder Eldric asks Robin to hear the five villagers out; once he has, the elder sends him to the castle.
+  // stage 0: listening   1: all heard, back to Eldric   2: sent to the castle   3: in the throne hall
+  var QUEST = { stage: 0, heard: {}, need: ['npc_marta', 'npc_oswin', 'npc_bren', 'npc_lina', 'npc_toby'], pears: false };
+  function eul(word) {                     // 을 after a closing consonant, 를 after a vowel
+    var c = word.charCodeAt(word.length - 1) - 0xac00;
+    return word + (c >= 0 && c < 11172 && c % 28 ? '을' : '를');
+  }
+  function heardAll() { return QUEST.need.every(function (id) { return QUEST.heard[id]; }); }
+  function talkTo(n) {
+    var id = n.id, d = n.def, lines, giving = false;
+    n.talking = true;
+    if (id === 'npc_eldric') {
+      if (QUEST.stage >= 2) lines = d.mission;
+      else if (heardAll()) { lines = d.give; giving = true; }
+      else if (!n.met) lines = d.lines;
+      else {
+        var left = QUEST.need.filter(function (k) { return !QUEST.heard[k]; }).map(function (k) { return STORY.speakers[k]; });
+        lines = d.again.map(function (l) { return { who: l.who, text: l.text.replace('{left}을(를)', eul(left.join(', '))) }; });
+      }
+    } else lines = !n.met ? d.lines : (QUEST.stage >= 2 && d.mission ? d.mission : d.again);
+    say(lines, function () {
+      n.talking = false; n.met = true;
+      var fresh = QUEST.need.indexOf(id) >= 0 && !QUEST.heard[id];
+      if (fresh) QUEST.heard[id] = true;
+      npcGifts(n, function () {
+        if (giving) {
+          QUEST.stage = 2;
+          showArea('새 임무 · 성으로', '북서쪽 해안의 둑길 · 다리 앞의 괴물을 쓰러뜨려 길을 열자', true);
+        } else if (fresh && QUEST.stage === 0 && heardAll()) {
+          QUEST.stage = 1;
+          showArea('마을 사람들의 이야기를 모두 들었다', '장로 엘드릭에게 돌아가자', true);
+        } else if (fresh) {
+          var c = QUEST.need.filter(function (k) { return QUEST.heard[k]; }).length;
+          toast(STORY.speakers[id] + '의 이야기를 들었다  ·  ' + c + ' / ' + QUEST.need.length);
+        }
+        setObjective();
+      });
+    });
+  }
+  function questObjective() {
+    if (QUEST.stage === 0) return '마을 사람들의 이야기를 듣자  ·  ' + QUEST.need.filter(function (k) { return QUEST.heard[k]; }).length + ' / ' + QUEST.need.length;
+    if (QUEST.stage === 1) return '장로 엘드릭에게 돌아가자';
+    if (QUEST.stage === 2) return COMBAT.kills < COMBAT.need ? '다리를 막은 괴물을 쓰러뜨리자  ·  ' + COMBAT.kills + ' / ' + COMBAT.need
+                                                             : '북서쪽 둑길을 건너 성의 왕좌의 대전으로 가자';
+    return '왕좌의 대전에 닿았다  ·  엘렌하르의 왕자가 돌아왔다';
+  }
+  function renderQuestList() {
+    var el = $('questlist');
+    if (!el) {
+      el = document.createElement('ul'); el.id = 'questlist';
+      $('nameplate').appendChild(el);
     }
+    el.hidden = zone !== 'village' || QUEST.stage > 0;
+    if (el.hidden) return;
+    el.innerHTML = QUEST.need.map(function (k) {
+      return '<li' + (QUEST.heard[k] ? ' class="done"' : '') + '>' + STORY.speakers[k] + '</li>';
+    }).join('');
+  }
+  function reachThrone() {
+    if (QUEST.stage !== 2 || COMBAT.kills < COMBAT.need || talk.active) return;
+    QUEST.stage = 3;
+    hero.vel.x = hero.vel.z = 0;
+    say(STORY.village.throne, function () {
+      setObjective();
+      showArea('왕좌의 대전', '엘렌하르의 마지막 왕자가 돌아왔다', true);
+    });
   }
   window.addEventListener('keydown', function (e) {          // 1-3: what Robin holds
     var k = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[e.code];
@@ -2405,7 +2484,7 @@
     }
     _wp.set(hero.pos.x, hero.pos.y + 1.2, hero.pos.z);
     burst(_wp, type === 'core' ? 0x9fdcff : 0xffc27a, 26, 2.2);
-    toast((D.food ? D.name + '을(를) 먹었다' : D.name + '을(를) 깨뜨렸다') + '  ·  ' + said.join('  ·  '), PICK.icons[type]);
+    toast(eul(D.name) + (D.food ? ' 먹었다' : ' 깨뜨렸다') + '  ·  ' + said.join('  ·  '), PICK.icons[type]);
     updateHud(); updateBuffHud(); renderBag();
   }
   function dropLoot(m) {
@@ -2621,6 +2700,22 @@
     stage.appendChild(hurt); stage.appendChild(hp); stage.appendChild(area);
     return { hp: hp, hurt: hurt, area: area, current: '', timer: null };
   })();
+  (function hudColumn() {
+    // the nameplate (with the quest), Robin's health and the satchel button stack down the left, so none overlap
+    var css = document.createElement('style');
+    css.textContent = [
+      '.hudcol{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;max-width:min(100%,420px)}',
+      '.hudcol #hud-hp,.hudcol #bagbtn{position:static}',
+      '#questlist{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:5px}',
+      '#questlist li{font-size:12px;letter-spacing:.04em;color:var(--ink-dim);padding:2px 8px 3px;border:1px solid var(--panel-line);border-radius:2px}',
+      '#questlist li.done{color:var(--ink);border-color:rgba(243,169,95,.55);background:rgba(243,169,95,.12)}',
+      '#questlist li.done::before{content:"\\2713";color:var(--ember);margin-right:5px;font-weight:700}'].join('\n');
+    document.head.appendChild(css);
+    var top = document.querySelector('.overlay.top'), np = $('nameplate'), col = document.createElement('div');
+    col.className = 'hudcol';
+    top.insertBefore(col, np);
+    col.appendChild(np); col.appendChild(HUD.hp); col.appendChild(PICK.ui.btn);
+  })();
   hero.hp = 100;
   function updateHud() {
     HUD.hp.hidden = zone !== 'village';
@@ -2644,7 +2739,7 @@
     if (zone === 'forest') { name = '메갈리스 유적'; sub = '잊힌 왕국의 돌 고리'; }
     else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 30) {
       var k = LAND.castle.keep, kx = LAND.castle.x + k.x, kz = LAND.castle.z + k.z;
-      if (Math.abs(x - kx) < k.w / 2 && Math.abs(z - kz) < k.d / 2 && hero.pos.y > LAND.castle.y + 0.8) { name = '왕좌의 대전'; sub = '엘렌하르 성'; }
+      if (Math.abs(x - kx) < k.w / 2 && Math.abs(z - kz) < k.d / 2 && hero.pos.y > LAND.castle.y + 0.8) { name = '왕좌의 대전'; sub = '엘렌하르 성'; reachThrone(); }
       else { name = '엘렌하르 성'; sub = '바다 위의 옛 왕성'; }
     }
     else if (LAND.castle && Math.hypot(x - LAND.castle.x, z - LAND.castle.z) < 75) { name = '해안 둑길'; sub = '성으로 이어지는 돌다리'; }
@@ -2792,7 +2887,7 @@
                         summon: function () { foundCount = 3; found[0] = found[1] = found[2] = true; finished = true; summon(); },
                         village: function () { return VILLAGE; }, allFound: function () { foundCount = 3; found[0] = found[1] = found[2] = true; }, zone: function () { return zone; }, interact: interact,
                         scene: scene, camera: camera, begin: begin, monsters: function () { return MONSTERS; }, combat: COMBAT, land: LAND, boxes: function () { return BOXES; },
-    pick: PICK, res: RES, inv: INV, spawnPickup: spawnPickup, useItem: useItem, toggleBag: toggleBag, hold: hold, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
+    pick: PICK, res: RES, inv: INV, quest: QUEST, spawnPickup: spawnPickup, useItem: useItem, toggleBag: toggleBag, hold: hold, npcs: function () { return NPCS; }, forest: function () { return FOREST; } };
       frame();
     });
   }).catch(function (err) { console.error(err); fail('유적지를 불러오지 못했습니다: ' + (err && err.message ? err.message : err)); });
