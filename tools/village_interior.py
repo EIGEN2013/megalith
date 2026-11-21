@@ -34,7 +34,7 @@ class Room:
         Mi = Mw @ frame((L, self.t, 0), (-1, 0, 0), (0, -1, 0), (0, 0, 1))
         return Mw, Mi, L
 
-    def walls(self, X0, X1, Y0, Y1, wainscot=1.0, dado=True, beams=True):
+    def walls(self, X0, X1, Y0, Y1, wainscot=1.0, dado=True, beams=True, extra=None):
         k, t = self.k, self.t
         for side in ("front", "right", "back", "left"):
             Mw, Mi, L = self.inner_frame(side, X0, X1, Y0, Y1)
@@ -43,6 +43,8 @@ class Room:
             for o in ops:
                 u0, u1, v0, v1 = Kit.hole(o)
                 holes.append((L - u1 - t, L - u0 - t, v0, v1))
+            for (a, b, v0, v1) in (extra or {}).get(side, []):      # inner-only openings (inner u coordinates)
+                holes.append((a - t, b - t, v0, v1))
             Lin = L - 2 * t
             M = Mi @ T(t, 0, 0)
             k.plaster_cells(M, Lin, self.H, holes, self.plaster, bulge=0.008, cell=0.3, stains=False)
@@ -329,6 +331,395 @@ class Furnish:
         for sx in (-L / 2 + 0.12, L / 2 - 0.12):
             box(self.acc, "iron", M @ T(sx, -Wd / 2 - 0.004, H * 0.45), 0.025, 0.004, H * 0.45, IRON, 0)
         box(self.acc, "iron", M @ T(0, -Wd / 2 - 0.008, H * 0.7), 0.05, 0.008, 0.06, BRASS, 0.005)
+
+    # ------------------------------------------------------------ the smithy
+    def forge(self, Mw, u, w=1.6, d=0.95, h=0.8, stone=(0.42, 0.39, 0.35)):
+        """A waist-high brick hearth against the wall (Mw: inner wall frame), a glowing coal bed, a hood and flue,
+        the bellows beside it on a frame."""
+        k, rng = self.k, self.rng
+        Mf = Mw @ T(u, -d / 2, 0)
+        for i, side in enumerate(("front", "right", "back", "left")):
+            Mws, L = Kit.wall_frame(side, -w / 2, w / 2, -d / 2, d / 2, 0)
+            k.stone_wall(Mf @ Mws, L, h, [], col=stone, coursed=True, quoins=False, parity=i % 2, proud=0.02)
+        box(self.acc, "stone", Mf @ T(0, 0, h + 0.04), w / 2 + 0.06, d / 2 + 0.06, 0.04, k.tone(stone, 0.04) * 1.05, 0.015)
+        box(self.acc, "stone", Mf @ T(0, 0.05, h + 0.06), w / 2 - 0.25, d / 2 - 0.25, 0.03, (0.05, 0.045, 0.04), 0)
+        for _ in range(60):     # the fire: glowing coals in the middle, black at the edges
+            x, y = rng.uniform(-w / 2 + 0.3, w / 2 - 0.3), rng.uniform(-d / 2 + 0.3, d / 2 - 0.2)
+            hot = math.exp(-(x * x + y * y) / 0.09)
+            col = (1.0, 0.35 + 0.35 * hot, 0.08) if rng.random() < 0.25 + 0.7 * hot else (0.07, 0.065, 0.06)
+            blob(self.acc, "produce", Mf @ T(x, y, h + 0.1), rng.uniform(0.03, 0.05), col, seg=5, rings=3, squash=0.6, rng=rng)
+        for f in range(4):
+            a = rng.uniform(-0.15, 0.15)
+            pts = [(a + 0.02 * math.sin(t * 7 + f), 0.05 + 0.02 * math.cos(t * 5), h + 0.12 + t * 0.3) for t in np.linspace(0, 1, 6)]
+            tube(self.acc, "produce", Mf, pts, [0.05 * (1 - t) + 0.005 for t in np.linspace(0, 1, 6)], 6, (1.0, 0.6, 0.15))
+        # the hood: a pyramid of plastered brick narrowing into the flue
+        hood = [(-w / 2 - 0.05, 0), (w / 2 + 0.05, 0), (0.25, 0.75), (-0.25, 0.75)]
+        prism(self.acc, "stone", Mf @ frame((0, 0.08, h + 0.95), (1, 0, 0), (0, 1, 0), (0, 0, 1)), hood, d - 0.12, k.tone((0.36, 0.33, 0.3), 0.04))
+        box(self.acc, "stone", Mf @ T(0, 0.2, h + 1.7 + 0.5), 0.27, 0.27, 0.5, k.tone((0.36, 0.33, 0.3), 0.04), 0.02)
+        box(self.acc, "iron", Mf @ T(0, -d / 2 + 0.02, h + 0.97), w / 2 + 0.06, 0.02, 0.03, IRON, 0)
+        # bellows on a frame at the side, with the blast pipe into the fire
+        Mb = Mf @ T(w / 2 + 0.55, 0.1, 0)
+        for sx in (-0.25, 0.25):
+            box(self.acc, "wood", Mb @ T(sx, 0, 0.4), 0.04, 0.3, 0.4, k.J(OAK_DARK, 0.05), 0.01)
+        lathe(self.acc, "cloth", Mb @ T(0, 0.1, 0.95) @ R("x", math.pi / 2) @ np.diag([1.0, 0.45, 1.0, 1.0]),
+              [(0.0, -0.45), (0.22, -0.35), (0.3, -0.05), (0.26, 0.2), (0.08, 0.38), (0.0, 0.45)], 14, (0.28, 0.18, 0.11))
+        box(self.acc, "wood", Mb @ T(0, 0.1, 1.08), 0.33, 0.46, 0.02, k.J(OAK, 0.05), 0.006)
+        tube(self.acc, "iron", Mf, [(w / 2 + 0.55, -0.35, h + 0.95), (w / 2 + 0.1, -0.1, h + 0.25), (w / 2 - 0.3, 0.05, h + 0.12)], 0.04, 7, IRON)
+        tube(self.acc, "wood", Mb, [(0, 0.5, 1.12), (0, 0.95, 1.35)], 0.025, 6, k.J(OAK, 0.05))
+        return Mf
+
+    def workbench(self, M, L=2.6, Wd=0.7):
+        k, rng = self.k, self.rng
+        c = k.J(OAK, 0.06)
+        box(self.acc, "wood", M @ T(0, 0, 0.86), L / 2, Wd / 2, 0.05, c, 0.012)
+        for sx in (-L / 2 + 0.12, L / 2 - 0.12):
+            for sy in (-Wd / 2 + 0.08, Wd / 2 - 0.08):
+                box(self.acc, "wood", M @ T(sx, sy, 0.42), 0.06, 0.06, 0.42, c * 0.9, 0.01)
+        box(self.acc, "wood", M @ T(0, 0, 0.18), L / 2 - 0.1, Wd / 2 - 0.05, 0.02, c * 0.85, 0.006)
+        # a leg vise at one end
+        V = M @ T(-L / 2 + 0.4, -Wd / 2 - 0.05, 0.91)
+        box(self.acc, "iron", V @ T(0, 0, 0.06), 0.09, 0.06, 0.06, IRON, 0.01)
+        box(self.acc, "iron", V @ T(0, -0.12, 0.06), 0.09, 0.03, 0.08, IRON, 0.01)
+        tube(self.acc, "iron", V, [(-0.15, -0.1, 0.02), (0.15, -0.1, 0.02)], 0.012, 5, IRON)
+        tube(self.acc, "iron", V, [(0, -0.12, 0.02), (0, -0.12, -0.85)], 0.025, 6, IRON)
+        # tools and work strewn over the top
+        for i in range(7):
+            x = -L / 2 + 0.75 + i * 0.25 + rng.normal(0, 0.03)
+            a = rng.uniform(-0.6, 0.6)
+            Mt = M @ T(x, rng.uniform(-0.15, 0.15), 0.915) @ R("z", a)
+            if i % 3 == 0:     # a hammer
+                tube(self.acc, "wood", Mt, [(-0.16, 0, 0.02), (0.12, 0, 0.02)], 0.014, 6, k.J(WOOD_RAW, 0.05))
+                box(self.acc, "iron", Mt @ T(0.14, 0, 0.03), 0.025, 0.07, 0.025, IRON, 0.006)
+            elif i % 3 == 1:   # tongs
+                tube(self.acc, "iron", Mt, [(-0.25, -0.02, 0.012), (0.12, 0.0, 0.012), (0.2, 0.02, 0.012)], 0.009, 4, IRON)
+                tube(self.acc, "iron", Mt, [(-0.25, 0.02, 0.012), (0.12, 0.0, 0.012), (0.2, -0.02, 0.012)], 0.009, 4, IRON)
+            else:              # a bar of iron, half-drawn into a blade
+                prism(self.acc, "iron", Mt @ frame((0, 0, 0.012), (1, 0, 0), (0, 0, 1), (0, -1, 0)), [(-0.22, -0.02), (0.15, -0.02), (0.25, 0.0), (0.15, 0.02), (-0.22, 0.02)], 0.012, (0.18, 0.18, 0.19))
+
+    def sword(self, M, L=0.95):
+        """Upright, point up: blade, crossguard, grip, pommel."""
+        prism(self.acc, "iron", M @ frame((0, 0, 0.2), (1, 0, 0), (0, 1, 0), (0, 0, 1)), [(-0.025, 0), (0.025, 0), (0.02, L - 0.12), (0.0, L), (-0.02, L - 0.12)], 0.008,
+              (0.55, 0.56, 0.58))
+        box(self.acc, "iron", M @ T(0, 0, 0.19), 0.1, 0.015, 0.015, BRASS, 0.005)
+        tube(self.acc, "cloth", M, [(0, 0, 0.04), (0, 0, 0.18)], 0.016, 6, (0.25, 0.14, 0.08))
+        lathe(self.acc, "iron", M @ T(0, 0, 0.0), [(0.0, 0), (0.028, 0.01), (0.028, 0.04), (0.0, 0.05)], 8, BRASS)
+
+    def axe(self, M):
+        tube(self.acc, "wood", M, [(0, 0, 0.0), (0, 0, 0.85)], 0.017, 6, self.k.J(WOOD_RAW, 0.05))
+        prism(self.acc, "iron", M @ frame((0, 0, 0.72), (1, 0, 0), (0, 1, 0), (0, 0, 1)), [(-0.03, -0.04), (0.06, -0.06), (0.16, -0.1), (0.17, 0.12), (0.06, 0.07), (-0.03, 0.05)],
+              0.03, (0.3, 0.3, 0.31))
+
+    def weapon_rack(self, M, n=6):
+        """A standing rack: a slotted rail at the top, a trough at the bottom, swords and axes between."""
+        k = self.k
+        c = k.J(OAK_DARK, 0.05)
+        L = 0.24 * n + 0.2
+        for sx in (-L / 2, L / 2):
+            box(self.acc, "wood", M @ T(sx, 0, 0.7), 0.04, 0.2, 0.7, c, 0.01)
+            box(self.acc, "wood", M @ T(sx, 0, 0.03), 0.06, 0.28, 0.03, c, 0.008)
+        box(self.acc, "wood", M @ T(0, 0, 0.12), L / 2, 0.12, 0.03, c, 0.006)
+        box(self.acc, "wood", M @ T(0, 0, 0.95), L / 2, 0.06, 0.03, c, 0.006)
+        for i in range(n):
+            x = -L / 2 + 0.2 + i * 0.24
+            if i % 3 == 2:
+                self.axe(M @ T(x, 0, 0.14) @ R("z", 0.2))
+            else:
+                self.sword(M @ T(x, 0, 0.14))
+
+    def shield(self, M, r=0.32, col=(0.48, 0.14, 0.12)):
+        k = self.k
+        prof = [(0.0, 0.05), (r * 0.5, 0.045), (r, 0.0), (r + 0.01, -0.02), (0.0, -0.02)]
+        lathe(self.acc, "wood", M, prof, 20, col, smooth=True)
+        tube(self.acc, "iron", M, [(r * math.cos(a), r * math.sin(a), 0.0) for a in np.linspace(0, 2 * math.pi, 21)], 0.012, 5, IRON, cap=False)
+        lathe(self.acc, "iron", M @ T(0, 0, 0.04), [(0.0, 0.07), (0.07, 0.04), (0.09, 0.0), (0.0, 0.0)], 12, (0.32, 0.32, 0.33))
+        for a in np.linspace(0, 2 * math.pi, 4, endpoint=False):
+            box(self.acc, "plaster", M @ R("z", a) @ T(r * 0.55, 0, 0.042), r * 0.4, 0.04, 0.004, (0.85, 0.72, 0.3), 0)
+
+    def trough(self, M, L=1.2, Wd=0.55, H=0.6):
+        k = self.k
+        c = k.tone((0.5, 0.48, 0.44), 0.05)
+        for s in (-1, 1):
+            box(self.acc, "stone", M @ T(s * (L / 2 - 0.06), 0, H / 2), 0.06, Wd / 2, H / 2, c, 0.02)
+            box(self.acc, "stone", M @ T(0, s * (Wd / 2 - 0.06), H / 2), L / 2, 0.06, H / 2, c, 0.02)
+        box(self.acc, "stone", M @ T(0, 0, 0.06), L / 2, Wd / 2, 0.06, c, 0.01)
+        quad(self.acc, "glass", M, [(-L / 2 + 0.12, -Wd / 2 + 0.12, H - 0.08), (L / 2 - 0.12, -Wd / 2 + 0.12, H - 0.08), (L / 2 - 0.12, Wd / 2 - 0.12, H - 0.08),
+                                    (-L / 2 + 0.12, Wd / 2 - 0.12, H - 0.08)], (0.04, 0.06, 0.06))
+
+    def coal_bin(self, M, L=0.9, Wd=0.6):
+        k, rng = self.k, self.rng
+        c = k.J(OAK_DARK, 0.05)
+        for s in (-1, 1):
+            box(self.acc, "wood", M @ T(s * L / 2, 0, 0.3), 0.025, Wd / 2, 0.3, c, 0.006)
+            box(self.acc, "wood", M @ T(0, s * Wd / 2, 0.3), L / 2, 0.025, 0.3, c, 0.006)
+        for _ in range(45):
+            x, y = rng.uniform(-L / 2 + 0.08, L / 2 - 0.08), rng.uniform(-Wd / 2 + 0.08, Wd / 2 - 0.08)
+            blob(self.acc, "produce", M @ T(x, y, 0.5 + 0.08 * (1 - abs(x) / L)), rng.uniform(0.04, 0.07), k.J((0.06, 0.055, 0.05), 0.25), seg=5, rings=3, squash=0.7, rng=rng)
+        tube(self.acc, "iron", M, [(0.1, 0.0, 0.62), (0.35, 0.1, 1.05)], 0.012, 5, IRON)
+        box(self.acc, "iron", M @ T(0.07, -0.02, 0.6) @ R("y", 0.5), 0.1, 0.08, 0.008, IRON, 0.004)
+
+    # ------------------------------------------------------------ the bakery
+    def loaf(self, M, kind=0):
+        rng = self.rng
+        crust = self.k.J((0.62, 0.40, 0.18), 0.08) * rng.uniform(0.85, 1.05)
+        if kind == 0:      # a round cob with a cut cross
+            blob(self.acc, "produce", M @ T(0, 0, 0.06), 0.11, crust, seg=10, rings=6, squash=0.6, rng=rng, rough=0.04)
+            for a in (0, math.pi / 2):
+                box(self.acc, "produce", M @ T(0, 0, 0.125) @ R("z", a), 0.07, 0.006, 0.008, np.clip(crust * 1.35, 0, 1), 0)
+        elif kind == 1:    # a long loaf with slashes
+            blob(self.acc, "produce", M @ T(0, 0, 0.05) @ np.diag([2.1, 1.0, 1.0, 1.0]), 0.075, crust, seg=10, rings=6, squash=0.75, rng=rng, rough=0.03)
+            for i in range(3):
+                box(self.acc, "produce", M @ T(-0.08 + i * 0.08, 0, 0.11) @ R("z", 0.6), 0.03, 0.006, 0.006, np.clip(crust * 1.35, 0, 1), 0)
+        else:              # a plaited ring
+            for j in range(3):
+                pts = [((0.08 + 0.012 * math.sin(a * 3 + j * 2.1)) * math.cos(a), (0.08 + 0.012 * math.sin(a * 3 + j * 2.1)) * math.sin(a),
+                        0.03 + 0.012 * math.cos(a * 3 + j * 2.1)) for a in np.linspace(0, 2 * math.pi, 25)]
+                tube(self.acc, "produce", M, pts, 0.022, 6, crust, cap=False)
+
+    def basket(self, M, r=0.22, h=0.14, loaves=4):
+        k, rng = self.k, self.rng
+        lathe(self.acc, "wood", M, [(r * 0.8, 0.0), (r, h), (r + 0.01, h + 0.01), (r * 0.95, h + 0.01), (r * 0.77, 0.01), (0.0, 0.01)], 16,
+              k.J((0.5, 0.36, 0.18), 0.05), smooth=False)
+        for t in np.linspace(0.02, h, 4):
+            rr = r * 0.8 + (r * 0.2) * t / h + 0.004
+            tube(self.acc, "wood", M, [(rr * math.cos(a), rr * math.sin(a), t) for a in np.linspace(0, 2 * math.pi, 17)], 0.005, 3, k.J((0.42, 0.3, 0.15), 0.05), cap=False)
+        for i in range(loaves):
+            a = i * 2 * math.pi / max(1, loaves) + rng.uniform(0, 0.4)
+            self.loaf(M @ T(r * 0.45 * math.cos(a), r * 0.45 * math.sin(a), h * 0.4) @ R("z", rng.uniform(0, 6)) @ np.diag([0.75, 0.75, 0.75, 1.0]), rng.integers(3))
+
+    def bread_rack(self, M, L=1.5, Wd=0.45, levels=4):
+        k, rng = self.k, self.rng
+        c = k.J(OAK, 0.06)
+        for sx in (-L / 2, L / 2):
+            for sy in (-Wd / 2, Wd / 2):
+                box(self.acc, "wood", M @ T(sx, sy, 0.9), 0.03, 0.03, 0.9, c * 0.9, 0.006)
+        for i in range(levels):
+            z = 0.25 + i * 0.42
+            for j in range(4):
+                box(self.acc, "wood", M @ T(0, -Wd / 2 + Wd / 8 + j * Wd / 4, z), L / 2, Wd / 8 - 0.008, 0.012, k.J(c, 0.05), 0.003)
+            x = -L / 2 + 0.15
+            while x < L / 2 - 0.12:
+                kind = rng.integers(3)
+                self.loaf(M @ T(x, rng.normal(0, 0.06), z + 0.012) @ R("z", rng.normal(0, 0.3)), kind)
+                x += 0.22 if kind != 1 else 0.3
+
+    def kneading_table(self, M, L=1.8, Wd=0.8):
+        k, rng = self.k, self.rng
+        self.table_long(M, L, Wd)
+        patch(self.acc, "cloth", M @ frame((-L / 2 + 0.2, Wd / 2 - 0.1, 0.788), (1, 0, 0), (0, 0, 1), (0, -1, 0)), L - 0.5, Wd - 0.2, 6, 4, (0.92, 0.9, 0.84),
+              lambda U, V: 0.002 * np.sin(U * 13))
+        for (x, y, r) in ((-0.3, 0.05, 0.16), (0.25, -0.1, 0.12)):
+            blob(self.acc, "produce", M @ T(x, y, 0.81), r, (0.93, 0.86, 0.68), seg=10, rings=6, squash=0.45, rng=rng, rough=0.03)
+        tube(self.acc, "wood", M, [(0.55, 0.15, 0.82), (0.55, -0.25, 0.82)], 0.03, 8, k.J(WOOD_RAW, 0.04))
+        for y in (0.15, -0.25):
+            tube(self.acc, "wood", M, [(0.55, y, 0.82), (0.55, y + (0.07 if y > 0 else -0.07), 0.82)], 0.014, 6, k.J(WOOD_RAW, 0.04))
+        lathe(self.acc, "stone", M @ T(-0.65, -0.15, 0.785), [(0.0, 0), (0.1, 0), (0.17, 0.11), (0.165, 0.12), (0.09, 0.015), (0.0, 0.015)], 14, (0.6, 0.38, 0.24))
+
+    def peel(self, M):
+        tube(self.acc, "wood", M, [(0, 0, 0.3), (0, 0, 2.1)], 0.018, 6, self.k.J(WOOD_RAW, 0.05))
+        box(self.acc, "wood", M @ T(0, 0, 0.15), 0.17, 0.01, 0.16, self.k.J(WOOD_RAW, 0.05), 0.004)
+
+    # ------------------------------------------------------------ homes and workshops
+    def bookshelf(self, M, L=1.4, H=2.1, d=0.32):
+        """A tall case of shelves crowded with books (spines of many colours), a few lying flat, a candlestick."""
+        k, rng = self.k, self.rng
+        c = k.J(OAK_DARK, 0.05)
+        for sx in (-L / 2, L / 2):
+            box(self.acc, "wood", M @ T(sx, 0, H / 2), 0.025, d / 2, H / 2, c, 0.006)
+        box(self.acc, "wood", M @ T(0, d / 2 - 0.01, H / 2), L / 2, 0.01, H / 2, c * 0.8, 0)
+        box(self.acc, "wood", M @ T(0, 0, H + 0.03), L / 2 + 0.05, d / 2 + 0.03, 0.03, c, 0.008)
+        spines = [(0.42, 0.12, 0.1), (0.15, 0.22, 0.35), (0.2, 0.32, 0.18), (0.45, 0.32, 0.12), (0.3, 0.2, 0.12), (0.55, 0.48, 0.32), (0.12, 0.12, 0.12)]
+        for z in np.linspace(0.06, H - 0.4, 5):
+            box(self.acc, "wood", M @ T(0, 0, z), L / 2, d / 2, 0.015, c, 0.004)
+            x = -L / 2 + 0.04
+            while x < L / 2 - 0.08:
+                if rng.random() < 0.1:
+                    x += rng.uniform(0.08, 0.2)
+                    continue
+                bw = rng.uniform(0.025, 0.06)
+                bh = rng.uniform(0.2, 0.34)
+                lean = rng.normal(0, 0.03) if rng.random() < 0.8 else 0.25
+                col = k.J(spines[rng.integers(len(spines))], 0.1)
+                box(self.acc, "cloth", M @ T(x + bw / 2, -0.01, z + 0.015 + bh / 2) @ R("y", lean), bw / 2, d / 2 - 0.04, bh / 2, col, 0.006)
+                box(self.acc, "plaster", M @ T(x + bw / 2, -d / 2 + 0.035, z + 0.015 + bh * 0.75) @ R("y", lean), bw / 2 + 0.001, 0.002, 0.01, (0.75, 0.6, 0.25), 0)
+                x += bw + 0.004
+        for i in range(3):
+            box(self.acc, "cloth", M @ T(0.2, 0, H - 0.37 + 0.015 + 0.03 * i + 0.015), 0.14, 0.1, 0.014, k.J(spines[i], 0.1), 0.004)
+
+    def desk(self, M, L=1.5, Wd=0.75):
+        """A writing desk with a map spread out, an inkwell and quill, a brass compass and a candle."""
+        k, rng = self.k, self.rng
+        self.table_long(M, L, Wd)
+        patch(self.acc, "cloth", M @ frame((-0.45, 0.25, 0.79), (1, 0, 0), (0, 0, 1), (0, -1, 0)), 0.8, 0.55, 6, 4, (0.82, 0.74, 0.55),
+              lambda U, V: 0.006 * np.sin(U * 9) * np.sin(V * 7),
+              lambda U, V: np.clip(np.array([[0.82, 0.74, 0.55]]) * (0.9 + 0.1 * np.sin(U * 31 + V * 17))[:, None] - (np.abs(np.sin(U * 6 + np.sin(V * 5))) < 0.06)[:, None] * 0.25, 0, 1))
+        lathe(self.acc, "glass", M @ T(0.5, 0.15, 0.785), [(0.0, 0), (0.035, 0), (0.04, 0.04), (0.02, 0.06), (0.0, 0.06)], 10, (0.05, 0.05, 0.06))
+        tube(self.acc, "cloth", M, [(0.5, 0.15, 0.83), (0.42, 0.2, 1.05)], [0.004, 0.02], 5, (0.92, 0.9, 0.85))
+        lathe(self.acc, "iron", M @ T(0.3, -0.2, 0.785), [(0.0, 0), (0.08, 0), (0.085, 0.02), (0.08, 0.03), (0.0, 0.03)], 16, BRASS)
+        box(self.acc, "iron", M @ T(0.3, -0.2, 0.818) @ R("z", 0.6), 0.06, 0.006, 0.002, (0.5, 0.1, 0.08), 0)
+        self.candle(M @ T(-0.6, -0.25, 0.785))
+        for i in range(3):
+            box(self.acc, "cloth", M @ T(0.55, -0.22, 0.8 + 0.035 * i), 0.13, 0.09, 0.016, k.J([(0.42, 0.12, 0.1), (0.15, 0.22, 0.35), (0.3, 0.2, 0.12)][i], 0.1), 0.004)
+
+    def armchair(self, M):
+        k = self.k
+        c = k.J(OAK_DARK, 0.05)
+        box(self.acc, "wood", M @ T(0, 0, 0.42), 0.32, 0.3, 0.04, c, 0.01)
+        box(self.acc, "cloth", M @ T(0, -0.02, 0.5), 0.27, 0.25, 0.05, (0.45, 0.14, 0.12), 0.04)
+        box(self.acc, "wood", M @ T(0, 0.28, 0.85), 0.32, 0.04, 0.45, c, 0.012)
+        box(self.acc, "cloth", M @ T(0, 0.23, 0.85), 0.25, 0.02, 0.33, (0.45, 0.14, 0.12), 0.015)
+        for sx in (-0.3, 0.3):
+            box(self.acc, "wood", M @ T(sx, 0, 0.62), 0.03, 0.3, 0.03, c, 0.008)
+            for sy in (-0.27, 0.27):
+                box(self.acc, "wood", M @ T(sx, sy, 0.31 if sy < 0 else 0.42), 0.03, 0.03, 0.31 if sy < 0 else 0.42, c * 0.9, 0.006)
+
+    def herb_bunch(self, M, col):
+        k, rng = self.k, self.rng
+        tube(self.acc, "cloth", M, [(0, 0, 0.0), (0, 0, -0.12)], 0.004, 3, (0.7, 0.62, 0.45))
+        for i in range(9):
+            a = rng.uniform(0, 6.28)
+            l = rng.uniform(0.18, 0.3)
+            pts = [(0, 0, -0.1), (0.03 * math.cos(a), 0.03 * math.sin(a), -0.1 - l * 0.5), (0.06 * math.cos(a), 0.06 * math.sin(a), -0.1 - l)]
+            tube(self.acc, "produce", M, pts, 0.005, 3, k.J((0.35, 0.36, 0.2), 0.1), cap=False)
+            blob(self.acc, "produce", M @ T(*pts[2]), rng.uniform(0.018, 0.03), k.J(col, 0.12), seg=5, rings=3, squash=1.4, rng=rng)
+
+    def jar(self, M, h=0.16, col=(0.55, 0.4, 0.25), glass=False):
+        prof = [(0.0, 0), (0.05, 0.0), (0.06, h * 0.4), (0.05, h * 0.85), (0.035, h * 0.9), (0.04, h), (0.0, h)]
+        lathe(self.acc, "glass" if glass else "stone", M, prof, 10, col)
+        if not glass:
+            lathe(self.acc, "cloth", M @ T(0, 0, h), [(0.0, 0.01), (0.048, 0.0), (0.05, -0.02), (0.0, -0.02)], 8, (0.8, 0.75, 0.62))
+
+    def jar_shelf(self, Mw, u0, u1, zs):
+        k, rng = self.k, self.rng
+        cols = [(0.55, 0.4, 0.25), (0.35, 0.42, 0.3), (0.6, 0.55, 0.45), (0.45, 0.3, 0.2)]
+        for z in zs:
+            self.shelf(Mw, u0, u1, z)
+            u = u0 + 0.12
+            while u < u1 - 0.1:
+                if rng.random() < 0.35:
+                    self.bottle(Mw @ T(u, -0.13, z + 0.02) @ np.diag([0.8, 0.8, 0.8, 1.0]), k.J([(0.1, 0.25, 0.12), (0.3, 0.12, 0.08), (0.12, 0.16, 0.3)][rng.integers(3)], 0.1))
+                else:
+                    self.jar(Mw @ T(u, -0.13, z + 0.02), rng.uniform(0.12, 0.2), k.J(cols[rng.integers(4)], 0.08))
+                u += rng.uniform(0.13, 0.18)
+
+    def cauldron(self, M, r=0.32):
+        lathe(self.acc, "iron", M, [(0.0, 0.05), (r * 0.6, 0.06), (r, 0.25), (r * 1.02, 0.42), (r * 0.9, 0.5), (r * 0.92, 0.52), (r * 0.86, 0.52), (r * 0.84, 0.45),
+                                    (0.0, 0.45)], 18, (0.09, 0.09, 0.09))
+        lathe(self.acc, "produce", M @ T(0, 0, 0.44), [(0.0, 0), (r * 0.84, 0.0)], 18, (0.25, 0.4, 0.2))
+        for a in (0.3, 2.4, 4.5):
+            tube(self.acc, "iron", M, [(r * 0.6 * math.cos(a), r * 0.6 * math.sin(a), 0.1), (r * 0.7 * math.cos(a), r * 0.7 * math.sin(a), 0.0)], 0.02, 5, (0.09, 0.09, 0.09))
+
+    def mortar(self, M):
+        lathe(self.acc, "stone", M, [(0.0, 0), (0.07, 0), (0.09, 0.07), (0.085, 0.09), (0.06, 0.03), (0.0, 0.03)], 12, (0.55, 0.53, 0.5))
+        tube(self.acc, "wood", M, [(0.0, 0.0, 0.04), (0.05, 0.02, 0.17)], [0.022, 0.012], 6, self.k.J(WOOD_RAW, 0.05))
+
+    def armour_stand(self, M):
+        """A mail shirt on a post, a helmet on top, a sword belt hung from the cross-arm."""
+        k = self.k
+        c = k.J(OAK_DARK, 0.05)
+        box(self.acc, "wood", M @ T(0, 0, 0.03), 0.25, 0.25, 0.03, c, 0.008)
+        tube(self.acc, "wood", M, [(0, 0, 0.05), (0, 0, 1.55)], 0.03, 6, c)
+        tube(self.acc, "wood", M, [(-0.25, 0, 1.4), (0.25, 0, 1.4)], 0.025, 6, c)
+        mail = lambda U, V: np.clip(np.array([[0.42, 0.43, 0.45]]) * (0.8 + 0.2 * (np.sin(U * 160) * np.sin(V * 160) > 0))[:, None], 0, 1)
+        lathe(self.acc, "iron", M @ T(0, 0, 0.75), [(0.0, 0.0), (0.24, 0.0), (0.22, 0.2), (0.2, 0.45), (0.25, 0.62), (0.12, 0.7), (0.0, 0.72)], 14, (0.42, 0.43, 0.45))
+        for s in (-1, 1):
+            tube(self.acc, "iron", M, [(s * 0.2, 0, 1.36), (s * 0.3, 0, 1.2), (s * 0.32, 0, 1.0)], [0.08, 0.07, 0.06], 8, (0.42, 0.43, 0.45))
+        lathe(self.acc, "iron", M @ T(0, 0, 1.55), [(0.0, 0.25), (0.08, 0.24), (0.13, 0.17), (0.14, 0.05), (0.15, 0.0), (0.0, 0.0)], 14, (0.5, 0.5, 0.52))
+        box(self.acc, "iron", M @ T(0, -0.13, 1.63), 0.015, 0.015, 0.1, (0.5, 0.5, 0.52), 0.004)
+        tube(self.acc, "cloth", M, [(-0.24, -0.02, 0.95), (0.0, -0.25, 0.92), (0.24, -0.02, 0.95)], 0.025, 6, (0.3, 0.18, 0.1))
+        self.sword(M @ T(0.28, -0.1, 0.25) @ R("y", 0.12))
+
+    def cot(self, M, L=1.9, Wd=0.85, col=(0.3, 0.38, 0.24)):
+        k = self.k
+        c = k.J(OAK, 0.05)
+        for sx in (-L / 2, L / 2):
+            for sy in (-Wd / 2, Wd / 2):
+                box(self.acc, "wood", M @ T(sx, sy, 0.22), 0.035, 0.035, 0.22, c, 0.008)
+        for sy in (-Wd / 2, Wd / 2):
+            box(self.acc, "wood", M @ T(0, sy, 0.3), L / 2, 0.025, 0.06, c, 0.006)
+        box(self.acc, "cloth", M @ T(0, 0, 0.4), L / 2 - 0.03, Wd / 2 - 0.03, 0.07, (0.7, 0.64, 0.5), 0.05)
+        blob(self.acc, "cloth", M @ T(-L / 2 + 0.25, 0, 0.5), 0.2, LINEN, seg=10, rings=6, squash=0.35, rng=k.rng, rough=0.04)
+        patch(self.acc, "cloth", M @ frame((-L / 2 + 0.5, Wd / 2 + 0.04, 0.48), (1, 0, 0), (0, 0, 1), (0, -1, 0)), L - 0.55, Wd + 0.08, 8, 6, col,
+              lambda U, V: 0.025 * np.sin(U * 7) * np.sin(V * 6) - 0.14 * np.clip(np.abs(V - (Wd + 0.08) / 2) - Wd / 2 + 0.03, 0, 1) * 8)
+
+    def cradle(self, M):
+        k = self.k
+        c = k.J(OAK, 0.05)
+        box(self.acc, "wood", M @ T(0, 0, 0.35), 0.45, 0.25, 0.15, c, 0.02)
+        box(self.acc, "cloth", M @ T(0, 0, 0.47), 0.4, 0.2, 0.04, LINEN, 0.03)
+        for sx in (-0.45, 0.45):
+            prism(self.acc, "wood", M @ frame((sx, 0, 0), (0, 1, 0), (1, 0, 0), (0, 0, 1)), [(-0.3, 0.12)] + [(0.3 * math.cos(t), 0.12 + 0.1 * math.sin(t) * -1 + 0.1) for t in np.linspace(math.pi, 0, 7)][1:-1] +
+                  [(0.3, 0.12), (0.25, 0.55), (-0.25, 0.55)], 0.03, c)
+
+    def toy_horse(self, M):
+        k = self.k
+        c = k.J((0.6, 0.45, 0.3), 0.05)
+        blob(self.acc, "wood", M @ T(0, 0, 0.32) @ np.diag([1.6, 1.0, 1.0, 1.0]), 0.08, c, seg=8, rings=5, rng=k.rng, rough=0.02)
+        tube(self.acc, "wood", M, [(0.1, 0, 0.36), (0.16, 0, 0.48)], 0.04, 6, c)
+        blob(self.acc, "wood", M @ T(0.2, 0, 0.5) @ np.diag([1.4, 1.0, 1.0, 1.0]), 0.045, c, seg=6, rings=4, rng=k.rng, rough=0.02)
+        for sx in (-0.08, 0.08):
+            for sy in (-0.04, 0.04):
+                tube(self.acc, "wood", M, [(sx, sy, 0.28), (sx * 1.2, sy, 0.1)], 0.015, 4, c)
+        prism(self.acc, "wood", M @ frame((0, 0, 0.0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), [(-0.2, 0.1), (0.2, 0.1), (0.25, 0.14), (0.0, 0.08), (-0.25, 0.14)], 0.14, c * 0.9)
+
+    def loom(self, M, L=1.4):
+        """A floor loom: frame, warp threads, cloth wound on the front beam, a seat."""
+        k = self.k
+        c = k.J(OAK, 0.05)
+        for sx in (-L / 2, L / 2):
+            box(self.acc, "wood", M @ T(sx, 0.5, 0.9), 0.04, 0.04, 0.9, c, 0.008)
+            box(self.acc, "wood", M @ T(sx, -0.5, 0.45), 0.04, 0.04, 0.45, c, 0.008)
+            box(self.acc, "wood", M @ T(sx, 0, 0.12), 0.035, 0.55, 0.035, c, 0.008)
+            box(self.acc, "wood", M @ T(sx, 0.25, 1.35), 0.035, 0.3, 0.03, c, 0.008)
+        tube(self.acc, "wood", M, [(-L / 2, 0.5, 1.7), (L / 2, 0.5, 1.7)], 0.04, 8, c)
+        tube(self.acc, "wood", M, [(-L / 2, -0.5, 0.85), (L / 2, -0.5, 0.85)], 0.06, 10, c)
+        lathe(self.acc, "cloth", M @ T(-L / 2 + 0.08, -0.5, 0.85) @ R("y", math.pi / 2), [(0.075, 0), (0.075, L - 0.16)], 14, (0.6, 0.2, 0.16))
+        for i, x in enumerate(np.linspace(-L / 2 + 0.1, L / 2 - 0.1, 40)):
+            tube(self.acc, "cloth", M, [(x, -0.45, 0.9), (x, 0.0, 1.05), (x, 0.5, 1.68)], 0.003, 3, (0.85, 0.8, 0.68), cap=False)
+        box(self.acc, "wood", M @ T(0, 0.05, 1.03), L / 2, 0.03, 0.06, c * 0.9, 0.006)
+        box(self.acc, "wood", M @ T(0, -0.95, 0.5), L / 2 - 0.1, 0.15, 0.03, c, 0.008)
+        for sx in (-L / 2 + 0.2, L / 2 - 0.2):
+            box(self.acc, "wood", M @ T(sx, -0.95, 0.25), 0.03, 0.12, 0.25, c * 0.9, 0.006)
+
+    def spinning_wheel(self, M):
+        k = self.k
+        c = k.J(OAK, 0.05)
+        box(self.acc, "wood", M @ T(0, 0, 0.35), 0.4, 0.08, 0.04, c, 0.008)
+        for (x, y) in ((-0.32, -0.12), (-0.32, 0.12), (0.32, 0.0)):
+            tube(self.acc, "wood", M, [(x * 0.9, y * 0.6, 0.33), (x, y, 0.0)], 0.02, 5, c * 0.9)
+        Mw_ = M @ T(-0.12, 0, 0.75) @ R("x", math.pi / 2)
+        tube(self.acc, "wood", Mw_, [(0.32 * math.cos(a), 0.32 * math.sin(a), 0) for a in np.linspace(0, 2 * math.pi, 25)], 0.02, 5, c, cap=False)
+        for a in np.linspace(0, 2 * math.pi, 10, endpoint=False):
+            tube(self.acc, "wood", Mw_, [(0, 0, 0), (0.3 * math.cos(a), 0.3 * math.sin(a), 0)], 0.008, 4, c)
+        for s in (-0.06, 0.06):
+            tube(self.acc, "wood", M, [(-0.12, s, 0.37), (-0.12, s, 0.78)], 0.018, 5, c)
+        tube(self.acc, "wood", M, [(0.28, 0, 0.37), (0.3, 0, 0.72)], 0.018, 5, c)
+        lathe(self.acc, "cloth", M @ T(0.3, 0, 0.72) @ R("y", math.pi / 2), [(0.0, -0.08), (0.04, -0.05), (0.045, 0.05), (0.0, 0.08)], 10, (0.88, 0.85, 0.78))
+
+    def cloth_bolts(self, Mw, u0, u1, zs):
+        k, rng = self.k, self.rng
+        cols = [(0.55, 0.15, 0.12), (0.18, 0.28, 0.45), (0.3, 0.42, 0.25), (0.75, 0.62, 0.3), (0.85, 0.82, 0.74), (0.4, 0.25, 0.4)]
+        for z in zs:
+            self.shelf(Mw, u0, u1, z, d=0.42)
+            u = u0 + 0.12
+            while u < u1 - 0.1:
+                r_ = rng.uniform(0.06, 0.09)
+                lathe(self.acc, "cloth", Mw @ T(u, -0.21, z + 0.02 + r_) @ R("x", math.pi / 2) @ T(0, 0, -0.19), [(r_, 0), (r_, 0.38)], 12, k.J(cols[rng.integers(len(cols))], 0.06))
+                u += r_ * 2 + 0.02
+
+    def planks(self, M, n=8, L=2.4):
+        k, rng = self.k, self.rng
+        for i in range(n):
+            box(self.acc, "wood", M @ T(rng.normal(0, 0.04), 0, 0.025 + i * 0.052), L / 2, 0.14, 0.024, k.J(WOOD_RAW, 0.08) * rng.uniform(0.9, 1.08), 0.005)
+        for sx in (-L / 2 + 0.3, L / 2 - 0.3):
+            box(self.acc, "wood", M @ T(sx, 0, -0.03), 0.05, 0.16, 0.03, k.J(OAK_DARK, 0.05), 0.005)
+
+    def onions(self, M, n=9):
+        k, rng = self.k, self.rng
+        tube(self.acc, "cloth", M, [(0, 0, 0), (0, 0, -0.75)], 0.008, 4, (0.7, 0.62, 0.45))
+        for i in range(n):
+            a = rng.uniform(0, 6.28)
+            blob(self.acc, "produce", M @ T(0.04 * math.cos(a), 0.04 * math.sin(a), -0.1 - i * 0.07), rng.uniform(0.035, 0.045), k.J((0.72, 0.5, 0.25), 0.08),
+                 seg=7, rings=4, squash=0.9, rng=rng, rough=0.04)
 
     def dresser(self, M, L=1.4):
         k = self.k

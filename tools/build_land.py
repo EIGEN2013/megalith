@@ -154,6 +154,19 @@ def main():
     for st in PLAN.STREETS:
         rd, _ = seg_dist(CX, CZ, np.array(st, float))
         road = np.maximum(road, np.clip(1 - (rd - PLAN.STREET_HALF + 0.4) / 1.0, 0, 1))
+    # the old village's cobbled plaza: gravel under every cobble (the scanned ground now runs right through the village)
+    inst = np.fromfile(ROOT / "live_src" / "village_inst.f32", dtype="<f4").reshape(-1, 15)
+    cob = np.zeros(CX.shape)
+    for gi in V["instances"]:
+        if gi["set"] != "cobble":
+            continue
+        rows = inst[gi["offset"]:gi["offset"] + gi["count"]]
+        ix = np.clip(np.round(rows[:, 3] + 255.5).astype(int), 0, 511)
+        iz = np.clip(np.round(rows[:, 11] + 255.5).astype(int), 0, 511)
+        cob[iz, ix] = 1.0
+    for _ in range(2):            # dilate by a couple of metres, softly
+        cob = np.maximum.reduce([cob, np.roll(cob, 1, 0) * 0.85, np.roll(cob, -1, 0) * 0.85, np.roll(cob, 1, 1) * 0.85, np.roll(cob, -1, 1) * 0.85])
+    road = np.maximum(road, np.clip(cob, 0, 1))
     rock = np.clip((cslope - 26) / 12, 0, 1) + 0.6 * np.clip((N.fbm(p * 3, 4, 41).reshape(CX.shape) - 0.35) * 3, 0, 1) * np.clip((cslope - 12) / 10, 0, 1)
     rock = np.clip(rock, 0, 1) * (cs > 2)
     grass = np.ones_like(CX)

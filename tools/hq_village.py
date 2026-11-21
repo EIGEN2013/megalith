@@ -430,17 +430,20 @@ def smithy(glb):
     roof = Roof(kit, INST, site.Mb)
     pcol = PLASTER["lime"]
     win = lambda u, w=1.0, h=1.1, s=0.95, sh="red": {"kind": "win", "u": u, "w": w, "h": h, "sill": s, "shutters": sh}
+    gwin = lambda u: {"kind": "win", "u": u, "w": 1.0, "h": 1.1, "sill": 0.95, "shutters": "red", "depth": 0.5, "inside": True}
     storeys = [
         {"h": 3.0, "kind": "stone", "open": {
-            "front": [{"kind": "door", "u": 4.6, "w": 2.0, "h": 2.4, "sill": 0, "double": True, "col": (0.16, 0.12, 0.09)}, win(1.6), win(7.5)],
-            "right": [win(3.5)], "back": [win(4.5)], "left": [{"kind": "door", "u": 2.2, "w": 1.0, "h": 2.1, "sill": 0, "step": False}]},
+            "front": [{"kind": "door", "u": 4.6, "w": 2.0, "h": 2.4, "sill": 0, "double": True, "col": (0.16, 0.12, 0.09), "open": 92, "depth": 0.5},
+                      gwin(1.6), gwin(7.5)],
+            "right": [gwin(1.2)], "back": [gwin(4.5)], "left": [{"kind": "door", "u": 2.2, "w": 1.0, "h": 2.1, "sill": 0, "step": False, "depth": 0.5}]},
          "signs": {"front": [(8.45, 2.65, "anvil")]}},
         {"h": 2.5, "kind": "timber", "style": "tall", "open": {
             "front": [win(2.4, 0.9, 1.0, 0.8), win(6.6, 0.9, 1.0, 0.8)], "back": [win(4.5, 0.9, 1.0, 0.8)],
             "left": [win(3.5, 0.8, 0.9, 0.8)], "right": [win(3.5, 0.8, 0.9, 0.8)]}},
     ]
     rspec = {"axis": "x", "pitch": 46, "ov_e": 0.4, "ov_g": 0.3, "chimneys": [(3.4, 0.6, 1.4)], "chimney_col": (0.42, 0.39, 0.35)}
-    house(kit, roof, site, W, D, storeys, rspec, pcol)
+    house(kit, roof, site, W, D, storeys, rspec, pcol, solid=False)
+    inner = smithy_inside(kit, site, W, D, storeys[0]["open"])
     # the open forge under a lean-to on the left
     lx0 = -W / 2
     for py in (-3.2, 0.0, 3.2):
@@ -513,7 +516,7 @@ def smithy(glb):
     site.collider(lx0 - 1.0, 1.9, 0.8, 0.65, y0=-2, y1=1.0)
     site.collider(lx0 - 1.3, -0.6, 0.35, 0.35, y0=-2, y1=1.0)
     site.collider(lx0 - 3.0, 0, 0.15, 3.4, y0=-2, y1=2.3)
-    return place(acc, site, glb, "smithy", kit)
+    return place(acc, site, glb, "smithy", kit, inner)
 
 
 def chapel(glb):
@@ -604,8 +607,10 @@ def tallhouse(glb):
     win = lambda u, w=0.9, h=1.1, s=0.75, sh="blue", fl=False: {"kind": "win", "u": u, "w": w, "h": h, "sill": s, "shutters": sh, "flowers": fl}
     storeys = [
         {"h": 2.9, "kind": "timber", "style": "cross", "open": {
-            "front": [{"kind": "door", "u": 1.3, "w": 1.0, "h": 2.1, "sill": 0, "col": PAINT["blue"]}, win(4.4, 2.0, 1.35, 0.85, None)],
-            "left": [win(4.2, 0.9, 1.1, 0.9)], "right": [win(3.0, 0.9, 1.1, 0.9)], "back": [win(3.3, 0.9, 1.1, 0.9)]},
+            "front": [{"kind": "door", "u": 1.3, "w": 1.0, "h": 2.1, "sill": 0, "col": PAINT["blue"], "open": 100, "depth": 0.22},
+                      dict(win(4.4, 2.0, 1.35, 0.85, None), depth=0.22, inside=True)],
+            "left": [dict(win(4.2, 0.9, 1.1, 0.9), depth=0.22, inside=True)], "right": [dict(win(3.0, 0.9, 1.1, 0.9), depth=0.22, inside=True)],
+            "back": [dict(win(3.3, 0.9, 1.1, 0.9), depth=0.22, inside=True)]},
          "lanterns": {"front": [(2.15, 2.3)]}},
         {"h": 2.65, "kind": "timber", "jetty": 0.45, "style": "cross", "brackets": [0.25, 3.3, 6.35], "open": {
             "front": [win(1.6, fl=True), win(5.0, fl=True)], "left": [win(3.0), win(6.0)], "right": [win(3.0), win(6.0)], "back": [win(3.3)]}},
@@ -615,11 +620,12 @@ def tallhouse(glb):
     ]
     rspec = {"axis": "y", "pitch": 58, "ov_e": 0.4, "ov_g": 0.45, "finial": True, "chimneys": [(2.4, 2.0, 0.9)],
              "gable_windows": {"front": [win(3.3, 0.8, 1.0, 0.9, "blue")], "back": [win(3.3, 0.7, 0.9, 0.9, None)]}}
-    house(kit, roof, site, W, D, storeys, rspec, pcol)
+    house(kit, roof, site, W, D, storeys, rspec, pcol, solid=False)
+    inner = weaver_inside(kit, site, W, D, storeys[0]["open"])
     for k in range(3):
         kit.crate(T(W / 2 + 0.5, -2.5 + k * 0.6, site.gz(W / 2 + 0.5, -2.5 + k * 0.6)) @ R("z", rng.normal(0, 0.15)), 0.5)
     kit.barrel(T(W / 2 + 0.55, -0.9, site.gz(W / 2 + 0.55, -0.9)), col=WOOD_GREY)
-    return place(acc, site, glb, "tallhouse", kit)
+    return place(acc, site, glb, "tallhouse", kit, inner)
 
 
 def cottage(glb):
@@ -631,13 +637,14 @@ def cottage(glb):
     kit = Kit(acc, rng, instanced=True)
     roof = Roof(kit, INST, site.Mb)
     scol = (0.56, 0.53, 0.47)
-    win = lambda u, w=0.8, h=0.9, s=0.85, fl=True: {"kind": "win", "u": u, "w": w, "h": h, "sill": s, "shutters": "green", "flowers": fl}
+    win = lambda u, w=0.8, h=0.9, s=0.85, fl=True: {"kind": "win", "u": u, "w": w, "h": h, "sill": s, "shutters": "green", "flowers": fl, "depth": 0.45, "inside": True}
     storeys = [{"h": 2.45, "kind": "stone", "open": {
-        "front": [win(1.4), {"kind": "door", "u": 3.4, "w": 0.95, "h": 1.95, "sill": 0, "col": PAINT["green"]}, win(5.6), win(7.6, fl=False)],
-        "back": [win(3.0, fl=False), win(6.5, fl=False)], "left": [], "right": [win(2.8, 0.7, 0.8, 0.9, False)]}}]
+        "front": [win(1.4), {"kind": "door", "u": 3.4, "w": 1.0, "h": 1.98, "sill": 0, "col": PAINT["green"], "open": 100, "depth": 0.45}, win(5.6), win(7.6, fl=False)],
+        "back": [win(3.0, fl=False), win(6.5, fl=False)], "left": [], "right": []}}]
     rspec = {"axis": "x", "pitch": 50, "ov_e": 0.55, "ov_g": 0.42, "kind": "thatch", "thick": 0.36, "gable": "stone",
              "chimneys": [(3.9, 0.0, 0.7)], "chimney_col": scol}
-    house(kit, roof, site, W, D, storeys, rspec, PLASTER["white"], scol=scol)
+    house(kit, roof, site, W, D, storeys, rspec, PLASTER["white"], scol=scol, solid=False)
+    inner = farm_inside(kit, site, W, D, storeys[0]["open"])
     # porch hood over the door
     Mw, L = kit.wall_frame("front", -W / 2, W / 2, -D / 2, D / 2, 0)
     for sx in (-0.65, 0.65):
@@ -670,7 +677,7 @@ def cottage(glb):
     kit.bench(T(1.9, -D / 2 - 0.4, site.gz(1.9, -D / 2 - 0.4)), 1.3)
     kit.log_pile(T(-W / 2 - 0.5, 0.3, site.gz(-W / 2 - 0.5, 0.3)) @ R("z", math.pi / 2), 2.6, 5)
     site.collider(0, fy, (fx1 - fx0) / 2, 0.05, y0=-2, y1=1.0)
-    return place(acc, site, glb, "cottage", kit)
+    return place(acc, site, glb, "cottage", kit, inner)
 
 
 def bakery(glb):
@@ -685,16 +692,20 @@ def bakery(glb):
     win = lambda u, w=0.9, h=1.1, s=0.75, sh="ochre", fl=True: {"kind": "win", "u": u, "w": w, "h": h, "sill": s, "shutters": sh, "flowers": fl}
     storeys = [
         {"h": 3.0, "kind": "timber", "style": "cross", "open": {
-            "front": [{"kind": "door", "u": 1.5, "w": 1.0, "h": 2.15, "sill": 0, "col": PAINT["blue"]}, win(5.1, 2.4, 1.25, 0.95, None, False)],
-            "left": [win(4.2, 0.9, 1.1, 0.9, "ochre", False)], "back": [win(2.5, 0.9, 1.1, 0.9, None, False), win(5.8, 0.9, 1.1, 0.9, None, False)],
-            "right": [win(6.0, 0.8, 1.0, 1.0, None, False)]},
+            "front": [{"kind": "door", "u": 1.5, "w": 1.0, "h": 2.15, "sill": 0, "col": PAINT["blue"], "open": 100, "depth": 0.22},
+                      dict(win(5.1, 2.4, 1.25, 0.95, None, False), depth=0.22, inside=True)],
+            "left": [dict(win(4.2, 0.9, 1.1, 0.9, "ochre", False), depth=0.22, inside=True)],
+            "back": [dict(win(2.5, 0.9, 1.1, 0.9, None, False), depth=0.22, inside=True), dict(win(5.8, 0.9, 1.1, 0.9, None, False), depth=0.22, inside=True)],
+            "right": [dict(win(2.0, 0.8, 1.0, 1.0, None, False), depth=0.22, inside=True),
+                      {"kind": "blind", "u": 1.6 + D / 2, "w": 1.06, "h": 0.55, "sill": 0.67, "arch": "round"}]},      # the oven's mouth, inside
          "signs": {"front": [(7.45, 2.75, "pretzel")]}},
         {"h": 2.6, "kind": "timber", "jetty": 0.4, "style": "cross", "brackets": [0.25, 4.0, 7.75], "open": {
             "front": [win(1.5), win(4.0), win(6.5)], "left": [win(4.2, fl=False)], "right": [win(4.2, fl=False)], "back": [win(4.0, fl=False)]}},
     ]
     rspec = {"axis": "x", "pitch": 50, "ov_e": 0.45, "ov_g": 0.35, "chimneys": [(2.9, 2.6, 1.0)], "dormers": [(-1.2, 1.2)], "dormer_shutters": "ochre",
              "gable_windows": {"left": [win(4.2, 0.7, 0.85, 0.8, None, False)], "right": [win(4.2, 0.7, 0.85, 0.8, None, False)]}}
-    house(kit, roof, site, W, D, storeys, rspec, pcol)
+    house(kit, roof, site, W, D, storeys, rspec, pcol, solid=False)
+    inner = bakery_inside(kit, site, W, D, storeys[0]["open"])
     Mw, L = kit.wall_frame("front", -W / 2, W / 2, -D / 2, D / 2, 0)
     # the counter: a board let down from the shop window, bread on it, an awning above
     box(acc, "wood", Mw @ T(5.1, -0.32, 0.92), 1.3, 0.32, 0.035, kit.J(WOOD_RAW, 0.05), 0.01)
@@ -731,7 +742,7 @@ def bakery(glb):
         kit.sack(T(sx, sy, site.gz(sx, sy)) @ R("z", rng.uniform(0, 6)), 0.26)
     kit.crate(T(W / 2 - 0.4, -D / 2 - 0.5, site.gz(W / 2 - 0.4, -D / 2 - 0.5)), 0.5)
     kit.log_pile(T(W / 2 + 1.05, -1.4, site.gz(W / 2 + 1.05, -1.4)), 1.3, 5)
-    return place(acc, site, glb, "bakery", kit)
+    return place(acc, site, glb, "bakery", kit, inner)
 
 
 def fisher(glb):
@@ -1164,7 +1175,7 @@ def tavern_inside(kit, site, W, D, ops):
     F.chandelier(T(-0.6, 0.45, H - 1.15))
     door = ops["front"][0]
     hollow(site, ki, W, D, H, t, "front", door,
-           [(-4.3, 1.6, 0.6, [1.0, 0.5, 0.22], 2.4, 8.0), (-0.6, 0.45, 1.9, [1.0, 0.74, 0.45], 1.5, 11.0)], "갈매기 여관", "tavern")
+           [(-2.6, 1.0, 1.5, [1.0, 0.6, 0.32], 2.6, 12.0)], "갈매기 여관", "tavern")
     return acc_i
 
 
@@ -1314,6 +1325,525 @@ def fisher_inside(kit, site, W, D, ops):
     return acc_i
 
 
+def smithy_inside(kit, site, W, D, ops):
+    """The smith's shop: a brick forge with hood and bellows against the gable wall, an anvil on its stump,
+    a stone quench trough, a workbench with a leg vise, a board of tongs and hammers, a rack of finished swords and
+    axes, painted shields on the wall, a bin of coal and a cask of bar iron."""
+    rng = kit.rng
+    acc_i = Acc(rng)
+    ki = Kit(acc_i, rng)
+    ki.blocks = kit.blocks
+    t, H = 0.5, 2.85
+    room = Room(ki, -W / 2 + t, W / 2 - t, -D / 2 + t, D / 2 - t, H, t, ops, plaster=(0.72, 0.68, 0.6))
+    room.walls(-W / 2, W / 2, -D / 2, D / 2, wainscot=0)
+    room.flagstones((0.42, 0.40, 0.37))
+    room.ceiling(col=(0.2, 0.15, 0.1))
+    F = Furnish(ki)
+    _, Mi_r, _ = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.forge(Mi_r, 2.9, w=1.6, d=0.95)
+    site.collider(W / 2 - t - 0.48, 0.6, 0.5, 0.85, y0=-2, y1=2.6)
+    site.collider(W / 2 - t - 0.45, -0.75, 0.42, 0.38, y0=-2, y1=1.2)
+    # the anvil
+    ax_, ay_ = 2.2, 0.6
+    lathe(acc_i, "wood", T(ax_, ay_, 0), [(0.34, 0), (0.33, 0.55), (0.0, 0.56)], 12, ki.J(WOOD_GREY, 0.05), smooth=False)
+    Ma = T(ax_, ay_, 0.56) @ R("z", math.pi / 2)
+    box(acc_i, "iron", Ma @ T(0, 0, 0.12), 0.14, 0.11, 0.12, IRON, 0.01)
+    box(acc_i, "iron", Ma @ T(0, 0, 0.3), 0.3, 0.09, 0.06, IRON, 0.01)
+    prism(acc_i, "iron", Ma @ frame((0.3, 0, 0.3), (1, 0, 0), (0, 1, 0), (0, 0, 1)), [(0, -0.06), (0.22, 0.03), (0, 0.06)], 0.14, IRON)
+    box(acc_i, "iron", Ma @ T(0, 0, 0.02), 0.2, 0.14, 0.03, IRON, 0.008)
+    tube(acc_i, "iron", Ma, [(-0.1, 0.03, 0.37), (0.12, 0.03, 0.37)], 0.016, 6, (0.3, 0.2, 0.12))
+    box(acc_i, "iron", Ma @ T(0.16, 0.03, 0.39), 0.045, 0.03, 0.03, IRON, 0.005)
+    prism(acc_i, "produce", Ma @ frame((-0.15, -0.02, 0.365), (1, 0, 0), (0, 0, 1), (0, -1, 0)), [(-0.12, -0.012), (0.08, -0.012), (0.14, 0.0), (0.08, 0.012), (-0.12, 0.012)],
+          0.01, (1.0, 0.45, 0.12))     # a bar still glowing from the fire
+    site.collider(ax_, ay_, 0.36, 0.36, y0=-2, y1=1.0)
+    F.trough(T(2.6, 2.3, 0), 1.2, 0.55, 0.6)
+    site.collider(2.6, 2.3, 0.62, 0.3, y0=-2, y1=0.62)
+    F.workbench(T(-2.2, 2.55, 0) @ R("z", math.pi), 2.6, 0.7)
+    site.collider(-2.2, 2.55, 1.32, 0.37, y0=-2, y1=0.95)
+    F.weapon_rack(T(-2.6, -0.6, 0), 6)
+    site.collider(-2.6, -0.6, 0.86, 0.3, y0=-2, y1=1.4)
+    F.coal_bin(T(3.35, -1.95, 0), 0.9, 0.6)
+    site.collider(3.35, -1.95, 0.48, 0.33, y0=-2, y1=0.62)
+    F.barrel(T(1.1, 2.55, 0), r=0.28, h=0.75, col=WOOD_GREY)
+    for i in range(7):       # bar iron standing in the cask
+        a = rng.uniform(0, 6.28)
+        tube(acc_i, "iron", np.eye(4), [(1.1 + 0.12 * math.cos(a), 2.55 + 0.12 * math.sin(a), 0.4), (1.1 + 0.18 * math.cos(a), 2.55 + 0.18 * math.sin(a), 1.35 + rng.uniform(0, 0.25))],
+             0.012, 4, (0.2, 0.2, 0.21))
+    site.collider(1.1, 2.55, 0.3, 0.3, y0=-2, y1=0.9)
+    # a board of tools on the left wall, shields on the back wall
+    _, Mi_l, _ = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    box(acc_i, "wood", Mi_l @ T(2.3, -0.025, 1.55), 0.85, 0.025, 0.45, ki.J(OAK_DARK, 0.05), 0.008)
+    for i in range(11):
+        u = 1.6 + i * 0.14
+        if i % 4 == 3:
+            tube(acc_i, "iron", Mi_l, [(u + 0.06 * math.cos(a), -0.06, 1.75 + 0.06 * math.sin(a)) for a in np.linspace(-0.4, math.pi + 0.4, 9)], 0.009, 4, IRON)
+        elif i % 4 == 1:
+            tube(acc_i, "wood", Mi_l, [(u, -0.07, 1.85), (u, -0.07, 1.4)], 0.013, 5, ki.J(WOOD_RAW, 0.05))
+            box(acc_i, "iron", Mi_l @ T(u, -0.07, 1.86), 0.05, 0.025, 0.025, IRON, 0.005)
+        else:
+            tube(acc_i, "iron", Mi_l, [(u - 0.02, -0.06, 1.85), (u + 0.01, -0.06, 1.3)], 0.008, 4, IRON)
+            tube(acc_i, "iron", Mi_l, [(u + 0.02, -0.06, 1.85), (u - 0.01, -0.06, 1.3)], 0.008, 4, IRON)
+    _, Mi_b, _ = room.inner_frame("back", -W / 2, W / 2, -D / 2, D / 2)
+    for k, (u, col) in enumerate(((5.7, (0.48, 0.14, 0.12)), (6.6, (0.16, 0.24, 0.38)), (7.5, (0.2, 0.32, 0.2)))):
+        F.shield(Mi_b @ T(u, -0.05, 1.8) @ R("x", math.pi / 2) @ R("z", rng.normal(0, 0.1)), 0.3, col)
+    door = ops["front"][0]
+    hollow(site, ki, W, D, H, t, "front", door, [(2.6, 0.6, 1.2, [1.0, 0.45, 0.18], 2.6, 9.0)], "대장간", "smithy")
+    return acc_i
+
+
+def bakery_inside(kit, site, W, D, ops):
+    """The bake-house: a counter behind the shop window piled with baskets of bread, racks of loaves, a kneading
+    table with dough rising under a cloth, flour sacks, the bread oven's arched mouth glowing in the gable wall with
+    its peel beside it, and a small hearth for the kettle."""
+    rng = kit.rng
+    acc_i = Acc(rng)
+    ki = Kit(acc_i, rng)
+    ki.blocks = kit.blocks
+    t, H = 0.22, 2.85
+    oven_u = D - (1.6 + D / 2)       # inner u' on the right wall (L - (y - y0)); the oven stands outside at y = 1.6
+    ov_w, ov_sill, ov_h = 0.66, 0.82, 0.38
+    room = Room(ki, -W / 2 + t, W / 2 - t, -D / 2 + t, D / 2 - t, H, t, ops, plaster=(0.88, 0.82, 0.7))
+    room.walls(-W / 2, W / 2, -D / 2, D / 2, wainscot=0.9)
+    room.floor_boards((0.42, 0.34, 0.24))
+    room.ceiling()
+    F = Furnish(ki)
+    # the oven mouth: a brick arch, a soot-black throat, embers and loaves inside, the iron door set aside
+    _, Mi_r, _ = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    Mo = Mi_r @ T(oven_u, 0, 0)
+    r = ov_w / 2
+    a0, a1 = ov_sill - 0.15, ov_sill + ov_h + r + 0.25
+    face = [(-r - 0.2, a0), (r + 0.2, a0), (r + 0.2, a1), (-r - 0.2, a1)]
+    brick = (0.56, 0.33, 0.24)
+    hole = [(r, ov_sill), (r, ov_sill + ov_h)] + [(r * math.cos(t_), ov_sill + ov_h + r * math.sin(t_)) for t_ in np.linspace(0.15, math.pi - 0.15, 9)] + [(-r, ov_sill + ov_h), (-r, ov_sill)]
+    for (p0, p1) in zip(hole[:-1], hole[1:]):          # brick voussoirs and jambs round the opening
+        m = ((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 - (ov_sill + ov_h))
+        dv = np.array(m) / (np.linalg.norm(m) + 1e-9) if m[1] > 0 else np.array([np.sign(m[0]), 0.0])
+        poly = [p0, p1, (p1[0] + dv[0] * 0.2, p1[1] + dv[1] * 0.2), (p0[0] + dv[0] * 0.2, p0[1] + dv[1] * 0.2)]
+        prism(acc_i, "stone", Mo @ frame((0, -0.06, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), poly, 0.1, ki.tone(brick, 0.08))
+    R0, top_ = r + 0.22, ov_sill + ov_h
+    Mface = Mo @ frame((0, -0.02, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1))
+    arch_pts = [(r * math.cos(t_), top_ + r * math.sin(t_)) for t_ in np.linspace(math.pi, 0, 11)]
+    for poly in ([(-R0, top_), (-r, top_)] + arch_pts[1:-1] + [(r, top_), (R0, top_), (R0, a1), (-R0, a1)],
+                 [(-R0, a0), (-r, a0), (-r, top_), (-R0, top_)], [(r, a0), (R0, a0), (R0, top_), (r, top_)], [(-r, a0), (r, a0), (r, ov_sill), (-r, ov_sill)]):
+        prism(acc_i, "stone", Mface, poly, 0.04, ki.tone((0.5, 0.3, 0.22), 0.06))
+    box(acc_i, "stone", Mo @ T(0, -0.1, ov_sill - 0.07), r + 0.28, 0.12, 0.07, ki.tone((0.55, 0.52, 0.46), 0.04), 0.012)
+    deep = 0.9
+    soot = (0.05, 0.04, 0.035)
+    quad(acc_i, "stone", Mo, [(-r, deep, ov_sill), (r, deep, ov_sill), (r, deep, ov_sill + ov_h + r), (-r, deep, ov_sill + ov_h + r)], (0.35, 0.12, 0.04))
+    quad(acc_i, "stone", Mo, [(-r, 0.0, ov_sill), (-r, deep, ov_sill), (-r, deep, ov_sill + ov_h + r), (-r, 0.0, ov_sill + ov_h + r)], soot)
+    quad(acc_i, "stone", Mo, [(r, 0.0, ov_sill), (r, 0.0, ov_sill + ov_h + r), (r, deep, ov_sill + ov_h + r), (r, deep, ov_sill)], soot)
+    quad(acc_i, "stone", Mo, [(-r, 0.0, ov_sill + ov_h + r * 0.85), (-r, deep, ov_sill + ov_h + r * 0.85), (r, deep, ov_sill + ov_h + r * 0.85), (r, 0.0, ov_sill + ov_h + r * 0.85)], soot)
+    quad(acc_i, "stone", Mo, [(-r, 0.0, ov_sill + 0.005), (r, 0.0, ov_sill + 0.005), (r, deep, ov_sill + 0.005), (-r, deep, ov_sill + 0.005)], (0.6, 0.22, 0.06))
+    for _ in range(18):
+        blob(acc_i, "produce", Mo @ T(rng.uniform(-r + 0.05, r - 0.05), rng.uniform(0.55, deep - 0.05), ov_sill + 0.02), rng.uniform(0.02, 0.035),
+             (1.0, rng.uniform(0.35, 0.6), 0.08), seg=5, rings=3, squash=0.6, rng=rng)
+    for i in range(3):
+        F.loaf(Mo @ T(-0.16 + i * 0.16, 0.3 + 0.08 * (i % 2), ov_sill + 0.01) @ np.diag([0.8, 0.8, 0.8, 1.0]), 0)
+    box(acc_i, "iron", Mo @ T(r + 0.42, -0.05, 0.45) @ R("y", 0.18), 0.34, 0.015, 0.3, (0.08, 0.08, 0.08), 0.008)
+    tube(acc_i, "iron", Mo, [(r + 0.42, -0.08, 0.5), (r + 0.42, -0.12, 0.5), (r + 0.42, -0.12, 0.42), (r + 0.42, -0.08, 0.42)], 0.008, 4, IRON)
+    for k in range(2):
+        F.peel(Mo @ T(-r - 0.45 - k * 0.22, -0.18, 0) @ R("x", -0.12) @ R("y", 0.06 * (k - 0.5)))
+    site.collider(W / 2 - t - 0.25, 1.6, 0.25, 0.9, y0=-2, y1=1.0)
+    # the shop counter behind the window
+    cx0, cx1, cy = -0.45, 2.65, -D / 2 + t + 0.32
+    box(acc_i, "wood", T((cx0 + cx1) / 2, cy, 0.47), (cx1 - cx0) / 2, 0.3, 0.47, ki.J(OAK, 0.05), 0.01)
+    for x in np.arange(cx0 + 0.05, cx1 - 0.3, 0.52):
+        box(acc_i, "wood", T(x + 0.26, cy + 0.31, 0.47), 0.22, 0.012, 0.34, ki.J(OAK, 0.06) * 1.05, 0.01)
+    box(acc_i, "wood", T((cx0 + cx1) / 2, cy, 0.96), (cx1 - cx0) / 2 + 0.05, 0.34, 0.03, ki.J(OAK, 0.04), 0.008)
+    for i, x in enumerate((-0.1, 0.65, 1.45, 2.25)):
+        F.basket(T(x, cy - 0.02, 0.99), 0.2, 0.12, 3 + i % 2)
+    # a balance scale
+    Ms = T(1.05, cy + 0.2, 0.99)
+    tube(acc_i, "iron", Ms, [(0, 0, 0), (0, 0, 0.35)], 0.01, 5, BRASS)
+    tube(acc_i, "iron", Ms, [(-0.16, 0, 0.34), (0.16, 0, 0.34)], 0.007, 4, BRASS)
+    for s in (-0.16, 0.16):
+        tube(acc_i, "iron", Ms, [(s, 0, 0.34), (s, 0, 0.18)], 0.002, 3, BRASS)
+        lathe(acc_i, "iron", Ms @ T(s, 0, 0.16), [(0.0, 0), (0.07, 0.0), (0.08, 0.02), (0.0, 0.01)], 10, BRASS)
+    lathe(acc_i, "iron", Ms, [(0.0, 0), (0.06, 0), (0.06, 0.015), (0.0, 0.015)], 10, BRASS)
+    site.collider((cx0 + cx1) / 2, cy, (cx1 - cx0) / 2 + 0.05, 0.34, y0=-2, y1=1.0)
+    # racks of bread, a kneading table, flour
+    F.bread_rack(T(-2.6, 2.3, 0), 1.5, 0.45, 4)
+    site.collider(-2.6, 2.3, 0.78, 0.26, y0=-2, y1=1.9)
+    F.bread_rack(T(-W / 2 + t + 0.3, -2.0, 0) @ R("z", math.pi / 2), 1.5, 0.45, 4)
+    site.collider(-W / 2 + t + 0.3, -2.0, 0.26, 0.78, y0=-2, y1=1.9)
+    F.kneading_table(T(0.5, 0.4, 0), 1.8, 0.8)
+    F.stool(T(0.5, 1.2, 0))
+    site.collider(0.5, 0.4, 0.95, 0.45, y0=-2, y1=0.85)
+    for k, (sx, sy) in enumerate(((-3.2, 3.4), (-2.75, 3.5), (-3.0, 3.05), (-3.05, 3.35))):
+        ki.sack(T(sx, sy, 0.0 if k < 3 else 0.42) @ R("z", rng.uniform(0, 6)), 0.25)
+    site.collider(-3.0, 3.3, 0.45, 0.45, y0=-2, y1=0.9)
+    F.barrel(T(-0.5, D / 2 - t - 0.35, 0), r=0.3, h=0.8, col=WOOD_RAW)
+    patch(acc_i, "cloth", T(-0.8, D / 2 - t - 0.05, 0.81), 0.6, 0.6, 3, 3, (0.93, 0.92, 0.88))
+    site.collider(-0.5, D / 2 - t - 0.35, 0.3, 0.3, y0=-2, y1=0.85)
+    # a small hearth for the kettle, on the back wall
+    _, Mi_b, _ = room.inner_frame("back", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_b, 2.9 + W / 2, w=1.2, h=1.25, depth=0.5, opening=0.7, stone=(0.5, 0.46, 0.4))
+    site.collider(2.9, D / 2 - t - 0.25, 0.62, 0.28, y0=-2, y1=2.5)
+    F.chandelier(T(0.5, 0.4, H - 1.1), r=0.4, n=6)
+    door = ops["front"][0]
+    hollow(site, ki, W, D, H, t, "front", door, [(1.6, 0.9, 1.9, [1.0, 0.7, 0.4], 2.0, 10.0)], "빵집", "bakery")
+    return acc_i
+
+
+def weaver_inside(kit, site, W, D, ops):
+    """The tall house's ground floor is a weaver's shop: a floor loom before the shop window, a spinning wheel,
+    shelves of cloth bolts, a cutting table, baskets of wool, a small fire."""
+    rng = kit.rng
+    acc_i = Acc(rng)
+    ki = Kit(acc_i, rng)
+    ki.blocks = kit.blocks
+    t, H = 0.22, 2.75
+    room = Room(ki, -W / 2 + t, W / 2 - t, -D / 2 + t, D / 2 - t, H, t, ops, plaster=(0.86, 0.78, 0.6))
+    room.walls(-W / 2, W / 2, -D / 2, D / 2, wainscot=0.95)
+    room.floor_boards((0.34, 0.25, 0.17))
+    room.ceiling()
+    F = Furnish(ki)
+    _, Mi_r, _ = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_r, 2.25, w=1.3, h=1.3, depth=0.55, opening=0.8, stone=(0.5, 0.46, 0.4))
+    site.collider(W / 2 - t - 0.3, 2.0, 0.32, 0.7, y0=-2, y1=2.5)
+    F.loom(T(0.75, -1.35, 0), 1.4)
+    site.collider(0.75, -1.6, 0.78, 1.1, y0=-2, y1=1.8)
+    F.spinning_wheel(T(-1.9, 0.5, 0) @ R("z", 0.4))
+    site.collider(-1.9, 0.5, 0.45, 0.35, y0=-2, y1=1.1)
+    _, Mi_l, _ = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    F.cloth_bolts(Mi_l, 5.4, 7.9, (0.35, 0.95, 1.55))
+    site.collider(-W / 2 + t + 0.21, 2.4, 0.22, 1.25, y0=-2, y1=2.0)
+    F.table_long(T(0.5, 2.5, 0), 1.6, 0.8)
+    patch(acc_i, "cloth", T(-0.2, 2.75, 0.79), 1.2, 0.5, 6, 3, (0.55, 0.15, 0.12), lambda U, V: 0.004 * np.sin(U * 11))
+    for s in (-1, 1):
+        tube(acc_i, "iron", T(0.9, 2.3, 0.8) @ R("z", s * 0.25), [(0, 0, 0), (0.16, 0, 0)], 0.006, 4, IRON)
+    F.stool(T(0.5, 1.7, 0))
+    site.collider(0.5, 2.5, 0.85, 0.45, y0=-2, y1=0.85)
+    for (bx, by) in ((-2.5, -0.9), (-2.5, -1.55)):
+        lathe(acc_i, "wood", T(bx, by, 0), [(0.18, 0.0), (0.24, 0.35), (0.25, 0.36), (0.0, 0.01)], 14, ki.J((0.5, 0.36, 0.18), 0.05), smooth=False)
+        for _ in range(5):
+            blob(acc_i, "cloth", T(bx + rng.normal(0, 0.08), by + rng.normal(0, 0.08), 0.36 + rng.uniform(0, 0.06)), 0.08,
+                 ki.J([(0.85, 0.82, 0.74), (0.55, 0.15, 0.12), (0.18, 0.28, 0.45)][rng.integers(3)], 0.05), seg=7, rings=5, rng=rng, rough=0.06)
+    site.collider(-2.5, -1.2, 0.3, 0.6, y0=-2, y1=0.5)
+    F.chandelier(T(0.0, 0.4, H - 1.0), r=0.38, n=6)
+    hollow(site, ki, W, D, H, t, "front", ops["front"][0], [(0.2, 0.4, 1.9, [1.0, 0.72, 0.42], 2.0, 10.0)], "높은 집 · 베 짜는 집", "tallhouse")
+    return acc_i
+
+
+def farm_inside(kit, site, W, D, ops):
+    """The thatched cottage's kitchen and living room: a wide hearth with a pot, a scrubbed table with benches, the
+    dresser of plates, a bed and a cradle, a butter churn, onions and herbs hung from the beams."""
+    rng = kit.rng
+    acc_i = Acc(rng)
+    ki = Kit(acc_i, rng)
+    ki.blocks = kit.blocks
+    t, H = 0.45, 2.3
+    room = Room(ki, -W / 2 + t, W / 2 - t, -D / 2 + t, D / 2 - t, H, t, ops, plaster=(0.86, 0.84, 0.76))
+    room.walls(-W / 2, W / 2, -D / 2, D / 2, wainscot=0)
+    room.flagstones((0.52, 0.5, 0.45))
+    room.ceiling(col=(0.24, 0.17, 0.11), joist_dir="x", spacing=0.55)
+    F = Furnish(ki)
+    _, Mi_r, _ = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_r, 2.8, w=1.6, h=1.3, depth=0.6, opening=1.0, stone=(0.52, 0.49, 0.44))
+    site.collider(W / 2 - t - 0.3, 0.0, 0.32, 0.85, y0=-2, y1=2.3)
+    F.table_long(T(0.6, 0.25, 0), 1.8, 0.8)
+    F.bench(T(0.6, -0.4, 0), 1.7)
+    F.bench(T(0.6, 0.9, 0), 1.7)
+    F.plate(T(0.2, 0.15, 0.785))
+    F.plate(T(1.0, 0.35, 0.785))
+    blob(acc_i, "produce", T(0.6, 0.25, 0.84), 0.1, (0.62, 0.42, 0.2), seg=8, rings=5, squash=0.6, rng=rng)
+    F.tankard(T(1.25, 0.1, 0.785))
+    F.candle(T(0.55, 0.0, 0.785))
+    site.collider(0.6, 0.25, 0.95, 0.85, y0=-2, y1=0.85)
+    F.dresser(T(-0.25, D / 2 - t - 0.27, 0), 1.2)
+    site.collider(-0.25, D / 2 - t - 0.27, 0.65, 0.3, y0=-2, y1=2.1)
+    F.cot(T(-W / 2 + t + 0.5, 0.3, 0) @ R("z", math.pi / 2), 1.9, 0.85, (0.48, 0.16, 0.12))
+    site.collider(-W / 2 + t + 0.5, 0.3, 0.45, 0.98, y0=-2, y1=0.6)
+    F.cradle(T(-2.6, -1.55, 0))
+    site.collider(-2.6, -1.55, 0.47, 0.3, y0=-2, y1=0.6)
+    M = T(3.0, -1.6, 0)          # a butter churn
+    lathe(acc_i, "wood", M, [(0.2, 0.0), (0.17, 0.7), (0.15, 0.72), (0.0, 0.72)], 12, ki.J(WOOD_RAW, 0.05))
+    for z in (0.1, 0.6):
+        lathe(acc_i, "iron", M, [(0.2 - z * 0.04 + 0.006, z - 0.02), (0.2 - z * 0.04 + 0.006, z + 0.02)], 12, IRON)
+    tube(acc_i, "wood", M, [(0, 0, 0.72), (0, 0, 1.15)], 0.018, 5, ki.J(WOOD_RAW, 0.05))
+    site.collider(3.0, -1.6, 0.22, 0.22, y0=-2, y1=1.0)
+    for i, x in enumerate(np.arange(-1.4, 2.6, 0.55)):
+        if i % 2:
+            F.onions(T(x, -1.7, H - 0.2), 8)
+        else:
+            F.herb_bunch(T(x, -1.75, H - 0.2), [(0.55, 0.3, 0.7), (0.85, 0.75, 0.3), (0.35, 0.45, 0.25)][i % 3])
+    for (bx, by) in ((2.2, -1.9),):
+        F.basket(T(bx, by, 0), 0.24, 0.16, 0)
+        for _ in range(6):
+            blob(acc_i, "produce", T(bx + rng.normal(0, 0.06), by + rng.normal(0, 0.06), 0.18), 0.06, ki.J((0.35, 0.5, 0.22), 0.1), seg=7, rings=4, rng=rng)
+    F.rug(T(-1.6, 0.4, 0), 1.3, 0.9, (0.48, 0.16, 0.12), (0.75, 0.62, 0.3))
+    hollow(site, ki, W, D, H, t, "front", ops["front"][1], [(1.8, 0.0, 1.3, [1.0, 0.6, 0.3], 2.0, 9.0)], "초가집", "cottage")
+    return acc_i
+
+
+# ---------------------------------------------------------------- rooms behind the old houses' doors
+ROOM_DEPTH = -60.0
+OLD_HOUSES = [(0, "house_a", "엘드릭의 집", "study"), (1, "house_b", "마르타의 집", "store"), (2, "house_c", "리나의 집", "herbs"),
+              (3, "house_d", "토비네 집", "family"), (4, "house_e", "오스윈의 집", "guard"), (5, "house_f", "목공소", "carpenter")]
+
+
+class HiddenSite(Site):
+    """A room kept out of sight below the village: same footprint and turn as its house, no terrain."""
+
+    def __init__(self, x, z, yaw, floor):
+        self.x, self.z, self.yaw = x, z, yaw
+        self.c, self.s = math.cos(yaw), math.sin(yaw)
+        self.floor = self.low = floor
+        self.Mb = T(x, -z, floor) @ R("z", yaw)
+
+    def gz(self, lx, ly):
+        return 0.0
+
+
+def old_house_rooms(glb):
+    V = json.loads((ROOT / "raw" / "live" / "village.json").read_text(encoding="utf-8"))
+    out = 0
+    for (ci, hid, name, theme) in OLD_HOUSES:
+        c = V["colliders"][ci]
+        rng = np.random.default_rng(100 + ci)
+        # which face looks at the plaza: that wall has the door; turn the room so its door is at the canonical front
+        to_plaza = np.array([0.0 - c["x"], 2.0 - c["z"]])
+        best = None
+        for k_, theta in enumerate((0.0, math.pi / 2, math.pi, -math.pi / 2)):
+            yaw = c["yaw"] + theta
+            front = np.array([math.sin(yaw), math.cos(yaw)])          # canonical front (local -y) in game x, z
+            d = float(front @ to_plaza)
+            if best is None or d > best[0]:
+                best = (d, theta)
+        theta = best[1]
+        swap = abs(math.sin(theta)) > 0.5
+        W, D = (2 * c["hz"], 2 * c["hx"]) if swap else (2 * c["hx"], 2 * c["hz"])
+        site = HiddenSite(c["x"], c["z"], c["yaw"] + theta, ROOM_DEPTH)
+        acc = Acc(rng)
+        kit = Kit(acc, rng, instanced=True)
+        t, H = 0.35, 2.8
+        win = lambda u, w=0.9: {"kind": "win", "u": u, "w": w, "h": 1.15, "sill": 0.9, "depth": t, "inside": True, "shutters": rng.choice(["green", "red", "blue"])}
+        ops = {"front": [{"kind": "door", "u": W / 2, "w": 1.05, "h": 2.1, "sill": 0, "depth": t, "step": False}, win(W * 0.2)],
+               "back": [win(W * 0.3), win(W * 0.72)], "left": [win(D * 0.5)], "right": []}
+        x0, x1, y0, y1 = -W / 2, W / 2, -D / 2, D / 2
+        for side, lst in ops.items():
+            Mw, L = Kit.wall_frame(side, x0, x1, y0, y1, 0)
+            for o in lst:
+                kit.opening(Mw, o, "plaster", (0.84, 0.8, 0.7))
+        room = Room(kit, x0 + t, x1 - t, y0 + t, y1 - t, H, t, ops, plaster=(0.85, 0.8, 0.69))
+        F = Furnish(kit)
+        lamp = THEMES[theme](kit, room, F, site, W, D, t, H, rng)
+        for (sx, sy, hx_, hy_) in ((0, y0 + t / 2, W / 2, t / 2), (0, y1 - t / 2, W / 2, t / 2), (x0 + t / 2, 0, t / 2, D / 2), (x1 - t / 2, 0, t / 2, D / 2)):
+            site.collider(sx, sy, hx_, hy_ + 0.04, y1=H)
+        site.collider(0, 0, W / 2, D / 2, y0=-2.0, y1=0.0)
+        blocks_out(kit, Acc(), site.Mb, -100.0, -100.0, rng, acc)
+        # daylight behind every window (the room lies out of sight; this is what its windows look out on)
+        day = Acc()
+        for side, lst in ops.items():
+            Mw, L = Kit.wall_frame(side, x0, x1, y0, y1, 0)
+            for o in lst:
+                if o["kind"] != "win":
+                    continue
+                a, b = o["u"] - o["w"] / 2 - 0.7, o["u"] + o["w"] / 2 + 0.7
+                lo_, hi_ = o["sill"] - 0.6, o["sill"] + o["h"] + 0.7
+                quad(day, "cloth", Mw, [(a, -0.55, lo_), (a, -0.55, hi_), (b, -0.55, hi_), (b, -0.55, lo_)], (0.93, 0.96, 1.0))
+        acc.merge(day)
+        world = Acc()
+        world.merge(acc, site.Mb)
+        out += glb.add_acc("room_" + hid, world)
+        gx, gz_ = site.world(0, 0)
+        fx, fz = math.sin(site.yaw), math.cos(site.yaw)       # the front's outward direction (game)
+        door_out = (c["x"] + fx * (D / 2 + 1.1), c["z"] + fz * (D / 2 + 1.1))
+        door_in = (c["x"] + fx * (D / 2 - t - 0.9), c["z"] + fz * (D / 2 - t - 0.9))
+        wx, wz = site.world(lamp[0], lamp[1])
+        INTERIORS.append({"id": hid, "name": name, "x": round(gx, 3), "z": round(gz_, 3), "yaw": round(site.yaw, 4), "hx": round(W / 2 - t, 3), "hz": round(D / 2 - t, 3),
+                          "floor": ROOM_DEPTH, "ceil": ROOM_DEPTH + H, "hidden": True,
+                          "lights": [{"x": round(wx, 3), "y": ROOM_DEPTH + lamp[2], "z": round(wz, 3), "color": lamp[3], "intensity": lamp[4], "distance": lamp[5]}],
+                          "door_out": {"x": round(door_out[0], 3), "z": round(door_out[1], 3), "heading": round(math.atan2(-fx, -fz), 4)},
+                          "door_in": {"x": round(door_in[0], 3), "y": ROOM_DEPTH, "z": round(door_in[1], 3), "heading": round(math.atan2(-fx, -fz), 4)}})
+        print(f"  {hid} ({name}): {W:.1f} x {D:.1f}")
+    return out
+
+
+def _shell(kit, room, W, D, floor="boards", ceiling=True, wainscot=0.95):
+    room.walls(-W / 2, W / 2, -D / 2, D / 2, wainscot=wainscot)
+    if floor == "boards":
+        room.floor_boards()
+    else:
+        room.flagstones((0.5, 0.48, 0.44))
+    if ceiling:
+        room.ceiling()
+
+
+def theme_study(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D)
+    _, Mi_b, Lb = room.inner_frame("back", -W / 2, W / 2, -D / 2, D / 2)
+    _, Mi_r, Lr = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_r, Lr / 2, w=1.7, h=1.4, depth=0.6, opening=1.0)
+    site.collider(W / 2 - t - 0.3, 0, 0.32, 0.9, y0=-2, y1=2.6)
+    for k_, x in enumerate((-W / 2 + t + 0.75, -W / 2 + t + 2.25)):
+        F.bookshelf(T(x, D / 2 - t - 0.17, 0), 1.4, 2.1)
+    site.collider(-W / 2 + t + 1.5, D / 2 - t - 0.17, 1.5, 0.18, y0=-2, y1=2.2)
+    F.desk(T(-0.6, -0.2, 0), 1.5, 0.75)
+    F.chair(T(-0.6, 0.45, 0) @ R("z", math.pi))
+    site.collider(-0.6, -0.2, 0.8, 0.42, y0=-2, y1=0.85)
+    F.armchair(T(W / 2 - t - 1.5, 1.0, 0) @ R("z", -math.pi / 2 - 0.4))
+    F.rug(T(W / 2 - t - 1.4, 0.0, 0) @ R("z", math.pi / 2), 2.0, 1.2, (0.22, 0.3, 0.42), (0.75, 0.62, 0.3))
+    F.chest(T(-W / 2 + t + 0.35, -0.8, 0) @ R("z", math.pi / 2))
+    site.collider(-W / 2 + t + 0.35, -0.8, 0.28, 0.47, y0=-2, y1=0.6)
+    _, Mi_l, Ll = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    patch(kit.acc, "cloth", Mi_l @ T(Ll * 0.15, -0.01, 1.2), 1.1, 0.8, 6, 4, (0.8, 0.72, 0.52),
+          lambda U, V: 0.01 * np.sin(U * 4) * np.sin(V * 5), lambda U, V: np.clip(np.array([[0.8, 0.72, 0.52]]) - (np.abs(np.sin(U * 5 + np.sin(V * 4) * 2)) < 0.08)[:, None] * 0.3, 0, 1))
+    F.chandelier(T(0, 0, H - 1.1), r=0.4, n=6)
+    return (0.6, 0.2, 1.8, [1.0, 0.68, 0.4], 2.2, 10.0)
+
+
+def theme_store(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D, wainscot=0)
+    for i in range(6):
+        x = -W / 2 + t + 0.4 + (i % 3) * 0.6
+        y = D / 2 - t - 0.4 - (i // 3) * 0.6
+        kit.crate(T(x, y, 0) @ R("z", rng.normal(0, 0.1)), 0.55)
+        if i % 2 == 0:
+            kit.crate(T(x, y, 0.55) @ R("z", rng.normal(0, 0.15)), 0.45)
+    site.collider(-W / 2 + t + 1.0, D / 2 - t - 0.7, 0.95, 0.65, y0=-2, y1=1.1)
+    for i in range(5):
+        kit.sack(T(W / 2 - t - 0.35 - (i % 3) * 0.45, D / 2 - t - 0.35 - (i // 3) * 0.4, 0) @ R("z", rng.uniform(0, 6)), 0.26)
+    site.collider(W / 2 - t - 0.8, D / 2 - t - 0.6, 0.75, 0.55, y0=-2, y1=0.8)
+    for (bx, by) in ((W / 2 - t - 0.4, -0.6), (W / 2 - t - 0.4, 0.15)):
+        F.barrel(T(bx, by, 0), 0.32, 0.85)
+    site.collider(W / 2 - t - 0.4, -0.22, 0.35, 0.75, y0=-2, y1=0.9)
+    _, Mi_l, Ll = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    F.jar_shelf(Mi_l, Ll * 0.62, Ll - t - 0.2, (0.5, 1.1, 1.7))
+    F.table_long(T(0.0, -0.2, 0), 1.6, 0.8)
+    for i in range(3):
+        F.basket(T(-0.5 + i * 0.5, -0.2, 0.785), 0.18, 0.11, 0)
+        for _ in range(5):
+            blob(kit.acc, "produce", T(-0.5 + i * 0.5 + rng.normal(0, 0.05), -0.2 + rng.normal(0, 0.05), 0.9), 0.045,
+                 kit.J([(0.75, 0.12, 0.1), (0.8, 0.65, 0.2), (0.4, 0.6, 0.2)][i], 0.08), seg=7, rings=4, rng=rng)
+    for i in range(12):        # a little pile of coins and the ledger
+        lathe(kit.acc, "iron", T(0.55 + rng.normal(0, 0.03), 0.05 + rng.normal(0, 0.03), 0.785 + 0.006 * i), [(0.0, 0), (0.018, 0), (0.018, 0.005), (0.0, 0.005)], 8,
+              (0.7, 0.55, 0.2))
+    box(kit.acc, "cloth", T(0.3, 0.1, 0.8), 0.14, 0.1, 0.02, (0.35, 0.2, 0.12), 0.004)
+    site.collider(0.0, -0.2, 0.85, 0.45, y0=-2, y1=0.85)
+    F.chandelier(T(0, 0, H - 1.1), r=0.35, n=5)
+    return (0.0, 0.0, 1.9, [1.0, 0.72, 0.42], 2.0, 10.0)
+
+
+def theme_herbs(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D, floor="flags", wainscot=0)
+    _, Mi_r, Lr = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    Mf = F.fireplace(Mi_r, Lr / 2, w=1.6, h=1.35, depth=0.6, opening=1.0)
+    site.collider(W / 2 - t - 0.3, 0, 0.32, 0.85, y0=-2, y1=2.6)
+    F.cauldron(T(W / 2 - t - 1.15, 0.0, 0), 0.3)
+    site.collider(W / 2 - t - 1.15, 0, 0.33, 0.33, y0=-2, y1=0.55)
+    _, Mi_b, Lb = room.inner_frame("back", -W / 2, W / 2, -D / 2, D / 2)
+    F.jar_shelf(Mi_b, t + 0.2, Lb * 0.24, (0.6, 1.15, 1.7))
+    F.jar_shelf(Mi_b, Lb * 0.52, Lb * 0.68, (0.6, 1.15, 1.7))
+    F.table_long(T(-0.5, 0.1, 0), 1.6, 0.75)
+    F.mortar(T(-0.9, 0.0, 0.785))
+    for i in range(6):
+        blob(kit.acc, "produce", T(-0.3 + rng.normal(0, 0.15), 0.15 + rng.normal(0, 0.12), 0.8), 0.03, kit.J([(0.55, 0.3, 0.7), (0.85, 0.75, 0.3), (0.3, 0.5, 0.25)][i % 3], 0.1),
+             seg=5, rings=3, rng=rng)
+    F.jar(T(0.1, 0.25, 0.785), 0.14, (0.35, 0.42, 0.3))
+    F.candle(T(-0.1, -0.15, 0.785))
+    site.collider(-0.5, 0.1, 0.85, 0.42, y0=-2, y1=0.85)
+    for i, x in enumerate(np.arange(-W / 2 + t + 0.4, W / 2 - t - 1.2, 0.42)):     # bunches drying from every joist
+        for y in (-0.9, 0.9):
+            F.herb_bunch(T(x + rng.normal(0, 0.05), y, H - 0.2), [(0.55, 0.3, 0.7), (0.85, 0.75, 0.3), (0.35, 0.45, 0.25), (0.8, 0.25, 0.25)][(i + int(y > 0)) % 4])
+    F.cot(T(-W / 2 + t + 0.5, -D / 2 + t + 1.4, 0) @ R("z", math.pi / 2), 1.8, 0.8, (0.3, 0.38, 0.24))
+    site.collider(-W / 2 + t + 0.5, -D / 2 + t + 1.4, 0.43, 0.95, y0=-2, y1=0.6)
+    return (-0.3, 0.2, 1.7, [1.0, 0.7, 0.42], 2.0, 9.0)
+
+
+def theme_family(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D, wainscot=0.9)
+    _, Mi_r, Lr = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_r, Lr / 2, w=1.7, h=1.35, depth=0.6, opening=1.05)
+    site.collider(W / 2 - t - 0.3, 0, 0.32, 0.9, y0=-2, y1=2.6)
+    F.table_long(T(-0.2, -0.3, 0), 1.9, 0.85)
+    F.bench(T(-0.2, -1.0, 0), 1.8)
+    F.bench(T(-0.2, 0.4, 0), 1.8)
+    for x in (-0.8, -0.2, 0.4):
+        F.plate(T(x, -0.3, 0.785))
+    F.candle(T(-0.2, -0.2, 0.785))
+    site.collider(-0.2, -0.3, 1.0, 0.9, y0=-2, y1=0.85)
+    for k_, y in enumerate((D / 2 - t - 0.5, D / 2 - t - 1.5)):
+        F.cot(T(-W / 2 + t + 1.05, y, 0), 1.9, 0.85, [(0.48, 0.16, 0.12), (0.22, 0.3, 0.42)][k_])
+    site.collider(-W / 2 + t + 1.05, D / 2 - t - 1.0, 1.0, 0.95, y0=-2, y1=0.6)
+    F.cradle(T(0.9, D / 2 - t - 0.4, 0))
+    F.toy_horse(T(1.4, 1.0, 0) @ R("z", 0.7))
+    F.sword(T(-W / 2 + t + 0.2, -D / 2 + t + 0.6, 0.0) @ R("y", 0.25) @ np.diag([0.6, 0.6, 0.6, 1.0]))
+    F.dresser(T(W / 2 - t - 1.6, D / 2 - t - 0.27, 0), 1.2)
+    site.collider(W / 2 - t - 1.6, D / 2 - t - 0.27, 0.65, 0.3, y0=-2, y1=2.1)
+    for x in np.arange(-1.6, 1.8, 0.7):
+        F.onions(T(x, 1.6, H - 0.2), 7)
+    F.rug(T(1.6, -0.6, 0), 1.4, 1.0, (0.3, 0.38, 0.24), (0.75, 0.62, 0.3))
+    return (0.5, -0.2, 1.6, [1.0, 0.62, 0.34], 2.1, 10.0)
+
+
+def theme_guard(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D, floor="flags", wainscot=0)
+    _, Mi_r, Lr = room.inner_frame("right", -W / 2, W / 2, -D / 2, D / 2)
+    F.fireplace(Mi_r, Lr / 2, w=1.5, h=1.3, depth=0.55, opening=0.95)
+    site.collider(W / 2 - t - 0.28, 0, 0.3, 0.8, y0=-2, y1=2.5)
+    F.armour_stand(T(-W / 2 + t + 0.5, D / 2 - t - 0.5, 0) @ R("z", 0.6))
+    site.collider(-W / 2 + t + 0.5, D / 2 - t - 0.5, 0.3, 0.3, y0=-2, y1=1.8)
+    F.weapon_rack(T(-0.2, D / 2 - t - 0.3, 0), 5)
+    site.collider(-0.2, D / 2 - t - 0.3, 0.75, 0.3, y0=-2, y1=1.4)
+    _, Mi_l, Ll = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    F.shield(Mi_l @ T(Ll * 0.25, -0.05, 1.7) @ R("x", math.pi / 2), 0.32, (0.16, 0.24, 0.38))
+    F.cot(T(W / 2 - t - 1.6, D / 2 - t - 0.48, 0), 1.9, 0.85, (0.3, 0.3, 0.32))
+    site.collider(W / 2 - t - 1.6, D / 2 - t - 0.48, 1.0, 0.48, y0=-2, y1=0.6)
+    F.table_round(T(-1.0, -0.6, 0), 0.55)
+    for a in (0.5, 2.6):
+        F.stool(T(-1.0 + 0.8 * math.cos(a), -0.6 + 0.8 * math.sin(a), 0))
+    F.tankard(T(-0.9, -0.5, 0.785))
+    for i in range(3):
+        box(kit.acc, "plaster", T(-1.15 + 0.06 * i, -0.75, 0.8) @ R("z", rng.uniform(0, 1)), 0.014, 0.014, 0.014, (0.9, 0.88, 0.82), 0.003)
+    F.candle(T(-1.1, -0.45, 0.785))
+    site.collider(-1.0, -0.6, 0.6, 0.6, y0=-2, y1=0.8)
+    F.chest(T(W / 2 - t - 0.6, -D / 2 + t + 0.4, 0), col=(0.3, 0.2, 0.12))
+    return (0.0, 0.0, 1.8, [1.0, 0.66, 0.38], 2.0, 10.0)
+
+
+def theme_carpenter(kit, room, F, site, W, D, t, H, rng):
+    _shell(kit, room, W, D, wainscot=0)
+    F.workbench(T(0.0, D / 2 - t - 0.4, 0) @ R("z", math.pi), 2.6, 0.7)
+    site.collider(0.0, D / 2 - t - 0.4, 1.32, 0.37, y0=-2, y1=0.95)
+    F.planks(T(-W / 2 + t + 0.25, 0.0, 0.06) @ R("z", math.pi / 2), 9, 2.6)
+    site.collider(-W / 2 + t + 0.25, 0.0, 0.18, 1.32, y0=-2, y1=0.55)
+    for k_, (x, y) in enumerate(((1.3, -0.3), (2.2, 0.6))):     # casks being made, hoops waiting
+        M = T(x, y, 0)
+        n = 18
+        for i in range(n if k_ else n - 5):
+            a = i / n * 2 * math.pi
+            pts = [(0.3 * (0.86 + 0.14 * math.sin(math.pi * s)) * math.cos(a), 0.3 * (0.86 + 0.14 * math.sin(math.pi * s)) * math.sin(a), 0.85 * s) for s in np.linspace(0, 1, 6)]
+            tube(kit.acc, "wood", M, pts, 0.03, 4, kit.J(WOOD_RAW, 0.08), cap=False)
+        lathe(kit.acc, "iron", M, [(0.265, 0.1), (0.27, 0.14)], 16, IRON)
+        site.collider(x, y, 0.33, 0.33, y0=-2, y1=0.9)
+    for i in range(3):
+        tube(kit.acc, "iron", T(W / 2 - t - 0.3, -D / 2 + t + 0.4, 0.05 + i * 0.03), [(0.3 * math.cos(a), 0.3 * math.sin(a), 0) for a in np.linspace(0, 2 * math.pi, 21)],
+             0.012, 4, IRON, cap=False)
+    for sx in (-1.4, -0.4):     # a saw horse
+        M = T(sx, -0.9, 0)
+        box(kit.acc, "wood", M @ T(0, 0, 0.6), 0.35, 0.05, 0.05, kit.J(OAK, 0.05), 0.006)
+        for a in (-0.3, 0.3):
+            for s in (-1, 1):
+                tube(kit.acc, "wood", M, [(s * 0.3, 0, 0.6), (s * 0.3, a * 1.2, 0.0)], 0.025, 5, kit.J(OAK, 0.05))
+    box(kit.acc, "wood", T(-0.9, -0.9, 0.67), 0.9, 0.12, 0.02, kit.J(WOOD_RAW, 0.06), 0.004)
+    site.collider(-0.9, -0.9, 0.95, 0.35, y0=-2, y1=0.7)
+    for _ in range(80):        # shavings
+        x, y = rng.uniform(-1.5, 1.5), rng.uniform(0.6, D / 2 - t - 0.9)
+        blob(kit.acc, "produce", T(x, y, 0.005), rng.uniform(0.02, 0.04), kit.J((0.78, 0.62, 0.4), 0.1), seg=4, rings=2, squash=0.3, rng=rng)
+    _, Mi_l, Ll = room.inner_frame("left", -W / 2, W / 2, -D / 2, D / 2)
+    box(kit.acc, "wood", Mi_l @ T(Ll * 0.75, -0.025, 1.6), 0.8, 0.025, 0.4, kit.J(OAK_DARK, 0.05), 0.008)
+    for i in range(9):
+        u = Ll * 0.75 - 0.65 + i * 0.16
+        tube(kit.acc, "wood", Mi_l, [(u, -0.06, 1.85), (u, -0.06, 1.45)], 0.012, 5, kit.J(WOOD_RAW, 0.05))
+        box(kit.acc, "iron", Mi_l @ T(u, -0.07, 1.42 if i % 2 else 1.86), 0.04, 0.02, 0.03, IRON, 0.004)
+    F.chandelier(T(0, 0, H - 1.1), r=0.35, n=5)
+    return (0.0, 0.2, 1.9, [1.0, 0.74, 0.46], 2.0, 10.0)
+
+
+THEMES = {"study": theme_study, "store": theme_store, "herbs": theme_herbs, "family": theme_family, "guard": theme_guard, "carpenter": theme_carpenter}
+
+
 BUILDERS = {"tavern": tavern, "smithy": smithy, "chapel": chapel, "tallhouse": tallhouse, "cottage": cottage, "bakery": bakery, "fisher": fisher}
 
 
@@ -1328,6 +1858,8 @@ def main():
             continue
         report[bid] = fn(glb)
         print(f"{bid:10s} {report[bid]:7d} tris")
+    if not only or "rooms" in only:
+        print("old-house rooms", old_house_rooms(glb), "tris")
     if not only or "wall" in only:
         n = town_wall(glb, rng)
         print("wall segments", n)

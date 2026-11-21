@@ -21,8 +21,8 @@ WALL_THICK = 0.9
 
 # streets inside the wall (dirt and gravel; the old village keeps its cobbles)
 STREETS = [
-    [(-46.0, 2.5), (-34.0, 3.2), (-22.0, 3.6)],                     # west gate -> plaza
-    [(0.4, 71.0), (0.6, 50.0), (0.4, 30.0), (0.0, 24.0)],           # south gate -> plaza
+    [(-46.0, 2.5), (-34.0, 3.2), (-22.0, 3.6), (-12.5, 3.6)],       # west gate -> plaza
+    [(0.4, 71.0), (0.6, 50.0), (0.4, 30.0), (0.2, 20.0), (0.4, 13.0)],   # south gate -> plaza
     [(13.0, 15.0), (24.0, 10.0), (34.5, 5.5)],                      # plaza -> Bren's cottage
     [(0.6, 46.0), (-11.0, 46.0)],                                   # to the chapel door
     [(0.6, 40.0), (10.5, 40.0)],                                    # to the thatched cottage

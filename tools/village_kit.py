@@ -308,6 +308,8 @@ class Kit:
 
     # ------------------------------------------------------------ windows and doors
     def opening(self, Mw, o, wallmat, wallcol, stone=False, scol=STONE):
+        if o["kind"] == "blind":     # a hole in the wall with nothing in it (something outside covers it)
+            return
         if o["kind"] == "door":
             self.door(Mw, o, wallmat, wallcol, stone, scol)
         else:
